@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+@page {
+  size: auto;
+  margin: 0mm;
+}
+
+@media print {
+  html, body, #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .page-break {
+    page-break-after: always;
+    break-after: page;
+  }
+  .sheet-page {
+    width: 100% !important;
+    min-height: 100vh !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 12mm !important;
+    margin: 0 !important;
+  }
+  .sheet-page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+}
+

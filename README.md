@@ -1,0 +1,170 @@
+# NoteationWeb 🎵
+### Free Web Application for Music Notation
+
+**NoteationWeb** is an open-source, 100% client-side web application designed for fast, intuitive, and professional music notation editing directly in your web browser. It combines a rapid keyboard-driven workflow and horizontal ribbon canvas with an advanced vector sheet view, dynamic typography, polyphonic Web Audio synthesis, and multi-page print/PDF export.
+
+**Created and Developed by Ramon John L. Dela Cruz**
+
+---
+
+## 🌟 Key Highlights & Philosophy
+
+- **100% Free & Open Source:** Free to use, modify, and distribute under the permissive MIT License.
+- **Zero Backend / Complete Privacy:** Operates entirely inside your browser using client-side JavaScript/TypeScript and standard Web APIs. No accounts, no servers, no databases, and zero tracking or telemetry. Your music files remain 100% private on your machine.
+- **Dual Visual Workflows:**
+  - **Continuous Ribbon View:** A smooth, horizontally scrolling multi-staff canvas optimized for rapid note entry, auditioning, and real-time editing.
+  - **Paginated Page View:** A print-ready multi-page layout engine with automatic measure wrapping, system grouping, dynamic headers, system brackets/braces, measure numbers, and vector PDF export.
+- **Precision Vector SVG Notation Engine:** High-resolution vector music glyphs for notes, stems, beams, flags, accidentals, ledger lines, ties, slurs, tuplets, expressions, dynamics, hairpins, and barlines.
+- **Proportional Staff & Notation Scaling:** Customize staff scale ($50\%$ to $150\%$) with automatic layout re-calculation, ensuring crisp, professional scores for compact hymn sheets, solo leads, or large orchestral works.
+- **Dynamic Page Setup & Typography:** Customize font families, font sizes, and styles for titles, composers, lyricists, staff lyrics, measure numbers, chord symbols, and page headers.
+- **Polyphonic Web Audio Synthesizer:** Real-time pitch auditioning as you move through pitches, combined with a synchronized multi-staff playback scheduler (`F5` Play / `F6` Stop) supporting tempo markings, metronome pulses, repeats, and dynamic volume balance.
+- **Rapid Keyboard Workflow:** Comprehensive numerical duration shortcuts (`1`–`6`), accidentals (`7`–`9`), notes/rests (`Enter`, `Space`, `Ctrl+Enter`), structural dialogs (`C`, `K`, `Shift+T`, `T`, `R`), and atomic batch editing.
+- **Multi-Verse Lyrics Engine:** Multi-verse lyric drawer with automated syllable tokenization, hyphenation, and dynamic note alignment.
+- **Open File Format (`.noteweb`):** Human-readable, structured JSON format for exporting, importing, and sharing your musical compositions.
+
+---
+
+## 🚀 Feature Overview
+
+### 1. Music Engraving & Elements
+- **Durations & Augmentation:** Whole (`1`), Half (`2`), Quarter (`3`), Eighth (`4`), Sixteenth (`5`), and Thirty-Second (`6`) notes and rests, supporting single and double augmentation dots (`.`).
+- **Pitches & Accidentals:** Full chromatic range across Treble, Bass, Alto, and Tenor clefs, supporting Naturals ($\natural$), Flats ($\flat$), and Sharps ($\sharp$).
+- **Automatic & Manual Beaming:** Automatic metric beat grouping (e.g., grouping eighths into quarter-note beats) with manual toggle (`B`) and batch beaming.
+- **Articulations & Expressions:** Staccato (`.`), Tenuto (`_`), Accents (`>`), Fermatas, Trills, Mordents, Turns, and Marcato marks with intelligent collision clearance.
+- **Ties & Slurs:** Smooth cubic Bézier tie (`tieOut`, `;`) and multi-note slur (`slurOut`, `/`) curves.
+- **Dynamics & Hairpins:** Standard dynamic markings ($ppp$, $pp$, $p$, $mp$, $mf$, $f$, $ff$, $fff$, $sfz$, $fz$) and scalable crescendo/decrescendo hairpins (`<`, `>`).
+- **Structural Markings:** Single, Double, and Final bar lines, repeat signs ($|:$, $:|$), first and second endings (voltas), and flow marks (Segno, Coda, Fine, D.C. al Fine, D.S. al Coda).
+- **Tempo & Metronome:** Score-wide and mid-score tempo changes (`Alt+T`) with custom BPM values and metronome marks.
+
+### 2. Multi-Staff Editing & Layout
+- **Staff Manager:** Add, delete, reorder, rename, mute/unmute, and set volume weighting across unlimited independent staves.
+- **Multi-Element Range Selection:** Click-and-drag or `Shift + Arrow` range selection on the active staff for instant batch transposition, duration changes, rest-to-note conversions, and clipboard operations (Cut `Ctrl+X`, Copy `Ctrl+C`, Paste `Ctrl+V`).
+- **50-Level Undo/Redo:** Reliable single-step undo (`Ctrl+Z`) and redo (`Ctrl+Y` / `Ctrl+Shift+Z`) history stack across all editing and batch actions.
+
+### 3. Typography & Page Layout
+- **Custom Fonts:** Independently assign typography (e.g. *Georgia*, *Times New Roman*, *Garamond*, *Helvetica*, *Courier New*) and sizing per text category.
+- **Custom Margins & Spacing:** Adjust top, bottom, left, and right margins, staff line spacing, and system spacing.
+- **Vector PDF Print:** Browser-native vector printing (`window.print()`) formatted for Letter and A4 pages with zero UI clipping.
+
+---
+
+## ⌨️ Keyboard Shortcuts Reference
+
+NoteationWeb is built from the ground up for lightning-fast keyboard-driven composition:
+
+| Key / Shortcut | Scope / Context | Action |
+|---|---|---|
+| `1` | Note Entry / Selection | Set duration to **Whole** note |
+| `2` | Note Entry / Selection | Set duration to **Half** note |
+| `3` | Note Entry / Selection | Set duration to **Quarter** note |
+| `4` | Note Entry / Selection | Set duration to **Eighth** note |
+| `5` | Note Entry / Selection | Set duration to **16th** note |
+| `6` | Note Entry / Selection | Set duration to **32nd** note |
+| `.` | Note Entry / Selection | Toggle / cycle augmentation dots ($0 \to 1 \to 2 \to 0$) |
+| `7` | Note Entry / Selection | Toggle **Natural** ($\natural$) accidental |
+| `8` | Note Entry / Selection | Toggle **Flat** ($\flat$) accidental |
+| `9` | Note Entry / Selection | Toggle **Sharp** ($\sharp$) accidental |
+| `Enter` | Cursor Position | Insert note at current pitch and duration |
+| `Enter` | Active Selection | Batch convert selected rests to notes |
+| `Ctrl + Enter` | Cursor Position | Add note to chord at current cursor position |
+| `Space` | Cursor Position | Insert rest with current duration & dots |
+| `Space` | Active Selection | Batch convert selected notes to rests |
+| `Tab` | Cursor Position | Insert standard single bar line |
+| `ArrowUp` / `ArrowDown` | Normal Entry | Move pitch offset up/down diatonically (with audio audition) |
+| `ArrowUp` / `ArrowDown` | Active Selection | Batch transpose selected notes up/down diatonically |
+| `Shift + ArrowUp/Down` | Normal Entry | Toggle note stem direction (`auto` / `up` / `down`) |
+| `Ctrl + ArrowUp/Down` | Global | Switch active staff up / down |
+| `ArrowLeft` / `ArrowRight` | Normal Entry | Move insertion cursor left / right |
+| `Shift + Left / Right` | Selection | Expand / contract range selection |
+| `Home` / `End` | Normal Entry | Jump cursor to start / end of active staff |
+| `PageUp` / `PageDown` | Normal Entry | Jump cursor to previous / next bar line |
+| `Backspace` | Normal Entry | Delete preceding element |
+| `Delete` | Normal Entry | Delete following element |
+| `Backspace` / `Delete` | Active Selection | Batch delete all selected elements |
+| `/` | Note Entry / Selection | Toggle slur (`slurOut`) |
+| `;` | Note Entry / Selection | Toggle tie (`tieOut`) |
+| `,` | Note Entry / Selection | Toggle staccato articulation |
+| `_` or `Shift + -` | Note Entry / Selection | Toggle tenuto articulation |
+| `B` | Note Entry / Selection | Toggle note beaming |
+| `X` | Note Entry | Open Expression & Ornaments dialog |
+| `C` | Global | Open Clef insertion dialog |
+| `K` | Global | Open Key Signature insertion dialog |
+| `Shift + T` | Global | Open Time Signature insertion dialog |
+| `T` | Global | Open Text / Chord symbol dialog |
+| `Alt + T` | Global | Open Tempo & Metronome dialog |
+| `R` | Global | Open Repeats & Endings dialog |
+| `Ctrl + Shift + P` | Global | Open Page Setup & Typography dialog |
+| `F5` / `F6` | Global | Start / Stop score audio playback |
+| `Ctrl + Z` / `Cmd + Z` | Global | Undo last action |
+| `Ctrl + Y` / `Ctrl+Shift+Z`| Global | Redo last undone action |
+| `Ctrl + X` | Active Selection | Cut selected elements to clipboard |
+| `Ctrl + C` | Active Selection | Copy selected elements to clipboard |
+| `Ctrl + V` | Cursor Position | Paste elements from clipboard |
+
+---
+
+## 🛠️ Technology Stack & Architecture
+
+- **Core Framework:** React 19 with strict TypeScript
+- **Styling & UI:** Tailwind CSS v4 with Lucide React icons
+- **Build Tooling:** Vite 6
+- **Test Framework:** Vitest 3 with React Testing Library & jsdom (614 passing tests)
+- **Audio Engine:** Web Audio API (polyphonic custom ADSR oscillator scheduler)
+- **Rendering Engine:** Custom mathematical SVG vector renderer
+
+---
+
+## 💻 Getting Started Locally
+
+### Prerequisites
+- **Node.js** (v18 or higher recommended)
+- **npm** (v9 or higher)
+
+### Installation & Development
+```bash
+# Clone repository
+git clone https://github.com/monjohn/NoteationWeb.git
+cd NoteationWeb
+
+# Install dependencies
+npm install
+
+# Start local development server
+npm run dev
+```
+Open your browser and navigate to `http://localhost:5173`.
+
+### Running Automated Tests
+```bash
+# Run Vitest test suite
+npm test
+```
+
+### Building for Production
+```bash
+# Compile TypeScript and bundle with Vite
+npm run build
+
+# Preview production build locally
+npm run preview
+```
+
+---
+
+## 📄 License & Legal Disclaimers
+
+### Author & Copyright
+**NoteationWeb** is an independent, original open-source software project created and maintained by **Ramon John L. Dela Cruz**.
+
+Copyright (c) 2026 Ramon John L. Dela Cruz.
+
+### MIT License
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+### Disclaimer of Warranties & Limitation of Liability
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+### Trademark & Independent Origin Notice
+NoteationWeb is an independent open-source software application built from the ground up using modern web technologies. Any musical conventions, terminology, standard musical glyphs, or universal notation rules implemented within this software represent standard music engraving practices. All product names, logos, and brands mentioned or referenced herein are property of their respective owners.
