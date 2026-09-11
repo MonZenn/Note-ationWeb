@@ -66,9 +66,9 @@ export const RepeatDialog: React.FC<RepeatDialogProps> = ({
       }}
       data-testid="repeat-dialog"
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg">
             <Repeat className="w-5 h-5 text-blue-400" />
             <span>Repeats & Endings</span>
@@ -83,7 +83,7 @@ export const RepeatDialog: React.FC<RepeatDialogProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        <div className="p-6 space-y-6 flex-1 overflow-y-auto">
           {/* Section 1: Repeat Barlines */}
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">

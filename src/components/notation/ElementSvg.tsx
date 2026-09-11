@@ -90,7 +90,7 @@ export const ElementSvg: React.FC<Props> = ({
 
     // Tie & Slur coordinates
     const tieY = bottomPitchY + 8 * noteheadScale;
-    const slurY = isDown ? topPitchY - 12 * scale : topPitchY - 36 * scale;
+    const slurY = isDown ? topPitchY - 4.5 * scale : bottomPitchY + 4.5 * scale;
     const noteheadCenterX = 7 * scale + shiftX;
     const noteheadRx = (isWhole ? 7.5 : 6.2) * noteheadScale;
     const ledgerX1 = -4 * scale + shiftX;
@@ -347,8 +347,11 @@ export const ElementSvg: React.FC<Props> = ({
         {/* Slur Out Curve (legacy single-note fallback) */}
         {element.slurOut && !element.slur && (
           <path
-
-            d={`M 10 ${slurY} C 18 ${slurY - 14 * scale}, 28 ${slurY - 14 * scale}, 36 ${slurY}`}
+            d={
+              isDown
+                ? `M ${7 * scale + shiftX} ${slurY} C ${16 * scale + shiftX} ${slurY - 14 * scale}, ${26 * scale + shiftX} ${slurY - 14 * scale}, ${34 * scale + shiftX} ${slurY}`
+                : `M ${7 * scale + shiftX} ${slurY} C ${16 * scale + shiftX} ${slurY + 14 * scale}, ${26 * scale + shiftX} ${slurY + 14 * scale}, ${34 * scale + shiftX} ${slurY}`
+            }
             fill="none"
             stroke="#0f172a"
             strokeWidth="1.8"

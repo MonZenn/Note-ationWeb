@@ -112,9 +112,9 @@ export const TextDialog: React.FC<TextDialogProps> = ({
       }}
       data-testid="text-dialog"
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg">
             <Type className="w-5 h-5 text-blue-400" />
             <span>{isEditing ? 'Edit Text' : 'Insert Text'}</span>
@@ -130,7 +130,7 @@ export const TextDialog: React.FC<TextDialogProps> = ({
         </div>
 
         {/* 3 Tab Switcher */}
-        <div className="flex border-b border-slate-200 bg-slate-100 p-1.5 gap-1.5">
+        <div className="flex border-b border-slate-200 bg-slate-100 p-1.5 gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -139,7 +139,7 @@ export const TextDialog: React.FC<TextDialogProps> = ({
             }}
             className={`flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-colors cursor-pointer text-center ${
               category === 'chord'
-                ? 'bg-white text-blue-600 shadow-xs font-semibold'
+                ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
@@ -175,8 +175,9 @@ export const TextDialog: React.FC<TextDialogProps> = ({
           </button>
         </div>
 
-        {/* Form Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-6 space-y-4 flex-1 overflow-y-auto">
           {/* Input field */}
           <div>
             <label
@@ -325,9 +326,10 @@ export const TextDialog: React.FC<TextDialogProps> = ({
               </div>
             </div>
           )}
+          </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 shrink-0 bg-slate-50">
             <div>
               {isEditing && (
                 <button

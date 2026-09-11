@@ -26,18 +26,19 @@ export const ScoreInfoModal: React.FC<ScoreInfoModalProps> = ({ isOpen, onClose,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 no-print print:hidden">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg">
             <Info className="w-5 h-5 text-blue-400" />
             <span>Score Information</span>
           </div>
-          <button type="button" onClick={onClose} className="p-1 hover:bg-slate-800 rounded" aria-label="Close">
+          <button type="button" onClick={onClose} className="p-1 hover:bg-slate-800 rounded cursor-pointer" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Title</label>
             <input
@@ -103,6 +104,39 @@ export const ScoreInfoModal: React.FC<ScoreInfoModalProps> = ({ isOpen, onClose,
                 className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="30"
                 max="300"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Date Category</label>
+              <select
+                value={formData.dateType || 'composed'}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    dateType: e.target.value as any,
+                  })
+                }
+                data-testid="score-date-type-select"
+                className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="composed">Date Composed</option>
+                <option value="arranged">Date Arranged</option>
+                <option value="transcribed">Date Transcribed</option>
+                <option value="custom">Custom Date</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Date / Year</label>
+              <input
+                type="text"
+                value={formData.dateText || ''}
+                onChange={(e) => setFormData({ ...formData, dateText: e.target.value })}
+                data-testid="score-date-text-input"
+                className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. 2026 or Oct 2024"
               />
             </div>
           </div>
@@ -193,12 +227,13 @@ export const ScoreInfoModal: React.FC<ScoreInfoModalProps> = ({ isOpen, onClose,
               </label>
             </div>
           </div>
+          </div>
 
-          <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-slate-200">
+          <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200 shrink-0 bg-slate-50">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 font-medium text-sm cursor-pointer"
+              className="px-4 py-2 border border-slate-300 rounded text-slate-700 hover:bg-slate-100 font-medium text-sm cursor-pointer"
             >
               Cancel
             </button>

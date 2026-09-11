@@ -260,7 +260,7 @@ export const RibbonCanvas: React.FC<Props> = ({
                 onTempoClick={(el) => onTempoClick?.(el, idx)}
                 onKeyClick={(el) => onKeyClick?.(el, idx)}
                 onClefClick={(el) => onClefClick?.(el, idx)}
-                autoBeaming={score.info.autoBeaming !== false}
+                autoBeaming={score.info.autoBeaming === true}
               />
             </div>
           ))}

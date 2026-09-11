@@ -63,7 +63,7 @@ export const LyricsDrawer: React.FC<LyricsDrawerProps> = ({
         </button>
       </div>
 
-      <div className="p-4 flex-1 flex flex-col">
+      <div className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto">
         <p className="text-xs text-slate-500 mb-2 leading-relaxed">
           Use hyphens (<code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700">Glo- ry</code>) to split syllables. Use an underscore (<code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700">_</code>) to pass over a rest or unvoiced note without printing text.
         </p>

@@ -203,12 +203,12 @@ export const TempoDialog: React.FC<TempoDialogProps> = ({
       data-testid="tempo-dialog-backdrop"
     >
       <div
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
         data-testid="tempo-dialog"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-slate-50/50">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 shrink-0">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
               <Gauge className="w-5 h-5" />
@@ -224,15 +224,18 @@ export const TempoDialog: React.FC<TempoDialogProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
             data-testid="tempo-close-button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} noValidate className="p-5 space-y-4">
+        {/* Content Form */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-5 space-y-4 flex-1 overflow-y-auto">
           {/* Live Engraving Preview Box */}
           <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-lg text-center">
             <span className="text-xs font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
@@ -390,9 +393,10 @@ export const TempoDialog: React.FC<TempoDialogProps> = ({
               ))}
             </div>
           </div>
+          </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 shrink-0 bg-slate-50">
             {isEditing && onDelete ? (
               <button
                 type="button"

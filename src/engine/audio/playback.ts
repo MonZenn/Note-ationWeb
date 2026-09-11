@@ -42,6 +42,9 @@ function getElementMetricBeats(elem: MusicElement): number {
     let beats = 4 / elem.duration;
     if (elem.dots === 1) beats *= 1.5;
     else if (elem.dots === 2) beats *= 1.75;
+    if (elem.tuplet && elem.tuplet.actual > 0 && elem.tuplet.normal > 0) {
+      beats *= elem.tuplet.normal / elem.tuplet.actual;
+    }
     return beats;
   }
   return 0;
@@ -427,6 +430,9 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
           let durationSec = beatFraction * currentMeasureQuarterSec;
           if (element.dots === 1) durationSec *= 1.5;
           else if (element.dots === 2) durationSec *= 1.75;
+          if (element.tuplet && element.tuplet.actual > 0 && element.tuplet.normal > 0) {
+            durationSec *= element.tuplet.normal / element.tuplet.actual;
+          }
           const nominalDurationSec = durationSec;
 
           if (element.staccatissimo) {
@@ -484,6 +490,9 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
           let durationSec = beatFraction * currentMeasureQuarterSec;
           if (element.dots === 1) durationSec *= 1.5;
           else if (element.dots === 2) durationSec *= 1.75;
+          if (element.tuplet && element.tuplet.actual > 0 && element.tuplet.normal > 0) {
+            durationSec *= element.tuplet.normal / element.tuplet.actual;
+          }
           if (element.fermata) {
             currentTimeSec += durationSec * 2.0;
           } else {

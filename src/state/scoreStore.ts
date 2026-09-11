@@ -80,6 +80,8 @@ export type ScoreAction =
   | { type: 'CYCLE_SLUR_DIRECTION' }
   | { type: 'TOGGLE_BEAM' }
   | { type: 'BATCH_TOGGLE_BEAM' }
+  | { type: 'BATCH_TOGGLE_TUPLET'; actual?: number; normal?: number }
+  | { type: 'TOGGLE_AUTO_BEAMING' }
   | { type: 'TOGGLE_HAIRPIN_RANGE'; hairpinType: HairpinType }
   | { type: 'COPY_SELECTION' }
   | { type: 'CUT_SELECTION' }
@@ -152,6 +154,7 @@ export function createInitialScore(): Score {
       arranger: '',
       tempo: 120,
       copyright: '',
+      autoBeaming: false,
     },
     staves: [
       {
@@ -1210,20 +1213,113 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         .filter((e): e is NoteElement => e.type === 'note');
       if (notesInRange.length === 0) return state;
 
-      const firstBeam = notesInRange[0].beam || 'auto';
-      const nextBeam: BeamMode =
-        firstBeam === 'auto'
-          ? 'break'
-          : firstBeam === 'break'
-          ? 'join'
-          : 'auto';
+      // If all notes in range are already joined, toggle to 'break' (unbeam).
+      // Otherwise, beam them together with 'join' and a unique group ID.
+      const allJoined = notesInRange.every((n) => n.beam === 'join');
+      const nextBeam: BeamMode = allJoined ? 'break' : 'join';
+      const newGroupId =
+        nextBeam === 'join'
+          ? `bg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+          : undefined;
 
       const newElements = staff.elements.map((elem, idx) => {
         if (idx >= start && idx < end && elem.type === 'note') {
           return {
             ...elem,
             beam: nextBeam,
+            beamGroupId: newGroupId,
           };
+        }
+        return elem;
+      });
+
+      // If we are beaming notes, ensure the immediately following note (if any) breaks
+      // so it does not accidentally beam itself or merge with the beamed group
+      if (nextBeam === 'join' && end < newElements.length) {
+        const following = newElements[end];
+        if (following && following.type === 'note' && !following.beam) {
+          newElements[end] = {
+            ...following,
+            beam: 'break',
+          };
+        }
+      }
+
+      const newStaves = [...state.present.staves];
+      newStaves[state.activeStaffIndex] = { ...staff, elements: newElements };
+      return pushHistory(state, { ...state.present, staves: newStaves });
+    }
+
+    case 'BATCH_TOGGLE_TUPLET': {
+      const staff = state.present.staves[state.activeStaffIndex];
+      if (!staff) return state;
+
+      if (!state.selectedRange) {
+        let targetIdx = -1;
+        if (
+          state.cursorIndex < staff.elements.length &&
+          (staff.elements[state.cursorIndex]?.type === 'note' ||
+            staff.elements[state.cursorIndex]?.type === 'rest')
+        ) {
+          targetIdx = state.cursorIndex;
+        } else if (
+          state.cursorIndex > 0 &&
+          (staff.elements[state.cursorIndex - 1]?.type === 'note' ||
+            staff.elements[state.cursorIndex - 1]?.type === 'rest')
+        ) {
+          targetIdx = state.cursorIndex - 1;
+        } else if (
+          staff.elements[0]?.type === 'note' ||
+          staff.elements[0]?.type === 'rest'
+        ) {
+          targetIdx = 0;
+        }
+        if (targetIdx === -1) return state;
+        const elem = staff.elements[targetIdx];
+        if (elem.type !== 'note' && elem.type !== 'rest') return state;
+
+        const newElements = [...staff.elements];
+        if (elem.tuplet) {
+          const { tuplet, ...rest } = elem;
+          newElements[targetIdx] = rest as typeof elem;
+        } else {
+          newElements[targetIdx] = {
+            ...elem,
+            tuplet: { actual: action.actual ?? 3, normal: action.normal ?? 2 },
+          };
+        }
+        const newStaves = [...state.present.staves];
+        newStaves[state.activeStaffIndex] = { ...staff, elements: newElements };
+        return pushHistory(state, { ...state.present, staves: newStaves });
+      }
+
+      const start = Math.min(state.selectedRange.startIndex, state.selectedRange.endIndex);
+      const end = Math.max(state.selectedRange.startIndex, state.selectedRange.endIndex);
+      if (start === end) return state;
+
+      const rhythmInRange = staff.elements
+        .slice(start, end)
+        .filter((e): e is NoteElement | RestElement => e.type === 'note' || e.type === 'rest');
+      if (rhythmInRange.length === 0) return state;
+
+      const allHaveTuplet = rhythmInRange.every((e) => !!e.tuplet);
+      const actualCount = action.actual ?? (rhythmInRange.length > 0 ? rhythmInRange.length : 3);
+      const normalCount = action.normal ?? (actualCount === 3 ? 2 : actualCount <= 4 ? 2 : 4);
+
+      const newElements = staff.elements.map((elem, idx) => {
+        if (idx >= start && idx < end && (elem.type === 'note' || elem.type === 'rest')) {
+          if (allHaveTuplet) {
+            const { tuplet, ...rest } = elem;
+            return rest as typeof elem;
+          } else {
+            return {
+              ...elem,
+              tuplet: {
+                actual: actualCount,
+                normal: normalCount,
+              },
+            };
+          }
         }
         return elem;
       });
@@ -1231,6 +1327,18 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const newStaves = [...state.present.staves];
       newStaves[state.activeStaffIndex] = { ...staff, elements: newElements };
       return pushHistory(state, { ...state.present, staves: newStaves });
+    }
+
+    case 'TOGGLE_AUTO_BEAMING': {
+      const cur = state.present.info.autoBeaming === true;
+      const newScore: Score = {
+        ...state.present,
+        info: {
+          ...state.present.info,
+          autoBeaming: !cur,
+        },
+      };
+      return pushHistory(state, newScore);
     }
 
     case 'TOGGLE_SLUR_RANGE': {

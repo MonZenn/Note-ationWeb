@@ -98,9 +98,9 @@ export const KeyDialog: React.FC<KeyDialogProps> = ({
       }}
       data-testid="key-dialog"
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg">
             <Hash className="w-5 h-5 text-blue-400" />
             <span>Key Signature</span>
@@ -116,7 +116,8 @@ export const KeyDialog: React.FC<KeyDialogProps> = ({
         </div>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-6 space-y-4 flex-1 overflow-y-auto">
           {/* Key Transition Indicator (if changing key) */}
           {isKeyChange && (
             <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-lg space-y-2 text-xs text-blue-950">
@@ -268,12 +269,13 @@ export const KeyDialog: React.FC<KeyDialogProps> = ({
               </div>
             )}
           </div>
+          </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 shrink-0 bg-slate-50">
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 text-xs font-medium cursor-pointer"
+              className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-100 text-xs font-medium cursor-pointer"
             >
               Cancel
             </button>

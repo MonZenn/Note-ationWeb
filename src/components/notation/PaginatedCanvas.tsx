@@ -126,6 +126,17 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
                     {score.info.arranger && (
                       <div style={getFontStyle(fonts.composer)}>Arr.: {score.info.arranger}</div>
                     )}
+                    {score.info.dateText && (
+                      <div style={getFontStyle(fonts.composer)} data-testid="score-header-date">
+                        {score.info.dateType === 'composed'
+                          ? `Comp.: ${score.info.dateText}`
+                          : score.info.dateType === 'arranged'
+                          ? `Arr.: ${score.info.dateText}`
+                          : score.info.dateType === 'transcribed'
+                          ? `Transcr.: ${score.info.dateText}`
+                          : score.info.dateText}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -205,7 +216,7 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
                             fullStaffElements={fullStaff.elements}
                             scale={pageSetup.staffScale}
                             fonts={fonts}
-                            autoBeaming={score.info.autoBeaming !== false}
+                            autoBeaming={score.info.autoBeaming === true}
                           />
                         </div>
                       );

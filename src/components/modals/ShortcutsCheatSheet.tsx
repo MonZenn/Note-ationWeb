@@ -26,7 +26,7 @@ const SHORTCUTS: ShortcutItem[] = [
   { key: '↑ / ↓', desc: 'Shift cursor pitch up / down diatonically', category: 'Pitches & Clefs' },
   { key: 'C', desc: 'Open Clef insertion dialog (Treble, Bass, Alto, Tenor)', category: 'Pitches & Clefs' },
   { key: 'K', desc: 'Open Key Signature dialog (-7 flats to +7 sharps)', category: 'Pitches & Clefs' },
-  { key: 'Shift + T', desc: 'Open Time Signature dialog (Common, Cut, Custom X/Y)', category: 'Pitches & Clefs' },
+  { key: 'Shift + T', desc: 'Toggle triplet (3 in space of 2 notes) on selection or note', category: 'Entry & Rhythms' },
   { key: 'Alt + T', desc: 'Open Tempo & Metronome dialog', category: 'Pitches & Clefs' },
   { key: 'T', desc: 'Open Text / Performance note dialog', category: 'Pitches & Clefs' },
   { key: 'Ctrl + K', desc: 'Insert Chord symbol above staff', category: 'Pitches & Clefs' },

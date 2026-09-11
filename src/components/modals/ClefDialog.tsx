@@ -40,9 +40,9 @@ export const ClefDialog: React.FC<ClefDialogProps> = ({
       }}
       data-testid="clef-dialog"
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg">
             <Music className="w-5 h-5 text-blue-400" />
             <span>Insert Clef</span>
@@ -58,35 +58,37 @@ export const ClefDialog: React.FC<ClefDialogProps> = ({
         </div>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            {CLEF_OPTIONS.map((c) => {
-              const isSelected = selectedClef === c.type;
-              return (
-                <button
-                  type="button"
-                  key={c.type}
-                  onClick={() => setSelectedClef(c.type)}
-                  className={`p-3 rounded-lg border-2 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    isSelected
-                      ? 'border-blue-600 bg-blue-50/70 text-blue-900 shadow-sm'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white hover:bg-slate-50'
-                  }`}
-                  data-testid={`clef-option-${c.type}`}
-                >
-                  <span className="text-3xl leading-none">{c.glyph}</span>
-                  <span className="text-xs font-bold">{c.name}</span>
-                  <span className="text-[10px] text-slate-500">{c.desc}</span>
-                </button>
-              );
-            })}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-6 space-y-4 flex-1 overflow-y-auto">
+            <div className="grid grid-cols-2 gap-3">
+              {CLEF_OPTIONS.map((c) => {
+                const isSelected = selectedClef === c.type;
+                return (
+                  <button
+                    type="button"
+                    key={c.type}
+                    onClick={() => setSelectedClef(c.type)}
+                    className={`p-3 rounded-lg border-2 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50/70 text-blue-900 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white hover:bg-slate-50'
+                    }`}
+                    data-testid={`clef-option-${c.type}`}
+                  >
+                    <span className="text-3xl leading-none">{c.glyph}</span>
+                    <span className="text-xs font-bold">{c.name}</span>
+                    <span className="text-[10px] text-slate-500">{c.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 shrink-0 bg-slate-50">
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 text-xs font-medium cursor-pointer"
+              className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-100 text-xs font-medium cursor-pointer"
             >
               Cancel
             </button>

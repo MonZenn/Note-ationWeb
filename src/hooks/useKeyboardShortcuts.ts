@@ -87,7 +87,9 @@ export function mapKeyToScoreAction(
     if (altKey && (key === 't' || key === 'T')) return { modal: 'tempo' };
     if (key === 'c' || key === 'C') return { modal: 'clef' };
     if (key === 'k' || key === 'K') return { modal: 'key' };
-    if (key === 'T' || (shiftKey && (key === 't' || key === 'T'))) return { modal: 'time' };
+    // Triplet shortcut: Shift + T
+    if (shiftKey && (key === 't' || key === 'T')) return { type: 'BATCH_TOGGLE_TUPLET', actual: 3, normal: 2 };
+    if (key === 'T' && !shiftKey) return { modal: 'time' };
     if (key === 't' && !shiftKey) return { modal: 'text' };
     if (key === 'r' || key === 'R') return { modal: 'repeat' };
     if (key === 'f' || key === 'F') return { modal: 'flow' };
@@ -238,6 +240,13 @@ export function handleKeyDown(
   if (e.altKey && (e.key === 't' || e.key === 'T')) {
     e.preventDefault();
     openTempoFn?.();
+    return;
+  }
+
+  // Triplet Shortcut: Shift + T
+  if (e.shiftKey && (e.key === 't' || e.key === 'T') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    dispatch({ type: 'BATCH_TOGGLE_TUPLET', actual: 3, normal: 2 });
     return;
   }
 

@@ -59,9 +59,9 @@ export const TimeDialog: React.FC<TimeDialogProps> = ({
       }}
       data-testid="time-dialog"
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg">
             <Clock className="w-5 h-5 text-blue-400" />
             <span>Insert Time Signature</span>
@@ -77,7 +77,8 @@ export const TimeDialog: React.FC<TimeDialogProps> = ({
         </div>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-6 space-y-5 flex-1 overflow-y-auto">
           {/* Quick Presets */}
           <div>
             <label className="block text-xs font-bold text-slate-600 uppercase mb-2">
@@ -173,12 +174,13 @@ export const TimeDialog: React.FC<TimeDialogProps> = ({
               )}
             </div>
           </div>
+          </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 shrink-0 bg-slate-50">
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 text-xs font-medium cursor-pointer"
+              className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-100 text-xs font-medium cursor-pointer"
             >
               Cancel
             </button>

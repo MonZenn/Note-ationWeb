@@ -140,9 +140,9 @@ export const FlowDialog: React.FC<FlowDialogProps> = ({
       }}
       data-testid="flow-dialog"
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg">
             <Navigation className="w-5 h-5 text-blue-400" />
             <span>Musical Flow Navigation</span>
@@ -157,7 +157,7 @@ export const FlowDialog: React.FC<FlowDialogProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+        <div className="p-6 space-y-5 flex-1 overflow-y-auto">
           {/* Section 1: Markers & Section Targets */}
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
@@ -228,7 +228,7 @@ export const FlowDialog: React.FC<FlowDialogProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+        <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
           <button
             type="button"
             onClick={onClose}

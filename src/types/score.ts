@@ -31,6 +31,12 @@ export function isOrnament(expr: NoteArticulation | NoteOrnament): expr is NoteO
   return expr === 'trill' || expr === 'mordent' || expr === 'turn';
 }
 
+export interface TupletConfig {
+  actual: number; // e.g., 3 (for triplet)
+  normal: number; // e.g., 2 (in the time of 2)
+  bracket?: boolean;
+}
+
 export interface NoteElement {
   id: string;
   type: 'note';
@@ -39,6 +45,8 @@ export interface NoteElement {
   pitches: PitchItem[];
   stemDirection: StemDirection;
   beam?: BeamMode;
+  beamGroupId?: string;
+  tuplet?: TupletConfig;
   tieOut?: boolean;
   slur?: SlurSpanner;
   slurOut?: boolean;
@@ -70,6 +78,7 @@ export interface RestElement {
   dots: number;
   fermata?: boolean;
   lyric?: string;
+  tuplet?: TupletConfig;
 }
 
 export interface BarLineElement {
@@ -254,6 +263,8 @@ export interface PageSetupConfig {
   };
 }
 
+export type DateType = 'composed' | 'arranged' | 'transcribed' | 'custom';
+
 export interface ScoreInfo {
   title: string;
   subtitle: string;
@@ -262,6 +273,8 @@ export interface ScoreInfo {
   arranger: string;
   tempo: number;
   copyright: string;
+  dateType?: DateType;
+  dateText?: string;
   measureNumbering?: MeasureNumberingMode;
   hideEmptyStaves?: boolean;
   multiMeasureRests?: boolean;

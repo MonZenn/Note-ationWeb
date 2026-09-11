@@ -22,7 +22,65 @@ interface Props {
   activeElement?: MusicElement | null;
   selectedRange?: SelectionRange | null;
   dispatch?: React.Dispatch<ScoreAction>;
+  autoBeaming?: boolean;
 }
+
+export const DurationIcon: React.FC<{ duration: DurationValue; className?: string }> = ({
+  duration,
+  className = 'w-3.5 h-3.5 inline-block shrink-0',
+}) => {
+  switch (duration) {
+    case 1:
+      return (
+        <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" data-testid="duration-icon-1">
+          <ellipse cx="8" cy="8" rx="6" ry="3.5" transform="rotate(-22 8 8)" strokeWidth="1.8" />
+        </svg>
+      );
+    case 2:
+      return (
+        <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" data-testid="duration-icon-2">
+          <ellipse cx="6" cy="11" rx="4.8" ry="3" transform="rotate(-22 6 11)" strokeWidth="1.6" />
+          <line x1="9.8" y1="10" x2="9.8" y2="2" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case 4:
+      return (
+        <svg viewBox="0 0 16 16" className={className} fill="currentColor" stroke="currentColor" data-testid="duration-icon-4">
+          <ellipse cx="6" cy="11" rx="4.8" ry="3.2" transform="rotate(-22 6 11)" stroke="none" />
+          <line x1="9.8" y1="10" x2="9.8" y2="2" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case 8:
+      return (
+        <svg viewBox="0 0 16 16" className={className} fill="currentColor" stroke="currentColor" data-testid="duration-icon-8">
+          <ellipse cx="5.5" cy="11" rx="4.5" ry="3" transform="rotate(-22 5.5 11)" stroke="none" />
+          <line x1="9" y1="10" x2="9" y2="2" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M 9 2 C 12 3.5, 13 6, 11.5 8.5" fill="none" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case 16:
+      return (
+        <svg viewBox="0 0 16 16" className={className} fill="currentColor" stroke="currentColor" data-testid="duration-icon-16">
+          <ellipse cx="5.5" cy="11.5" rx="4.5" ry="3" transform="rotate(-22 5.5 11.5)" stroke="none" />
+          <line x1="9" y1="10.5" x2="9" y2="1.5" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M 9 1.5 C 12 3, 13 5, 11.5 7" fill="none" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M 9 4.5 C 12 6, 13 8, 11.5 10" fill="none" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case 32:
+      return (
+        <svg viewBox="0 0 16 16" className={className} fill="currentColor" stroke="currentColor" data-testid="duration-icon-32">
+          <ellipse cx="5.5" cy="12" rx="4.5" ry="3" transform="rotate(-22 5.5 12)" stroke="none" />
+          <line x1="9" y1="11" x2="9" y2="1" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M 9 1 C 12 2.2, 13 3.8, 11.5 5.5" fill="none" strokeWidth="1.3" strokeLinecap="round" />
+          <path d="M 9 3.8 C 12 5, 13 6.6, 11.5 8.3" fill="none" strokeWidth="1.3" strokeLinecap="round" />
+          <path d="M 9 6.6 C 12 7.8, 13 9.4, 11.5 11.1" fill="none" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
 
 export const NotePalette: React.FC<Props> = ({
   entryState,
@@ -42,6 +100,7 @@ export const NotePalette: React.FC<Props> = ({
   activeElement,
   selectedRange,
   dispatch,
+  autoBeaming,
 }) => {
   const hasActiveSelection = Boolean(selectedRange && selectedRange.startIndex !== selectedRange.endIndex);
 
@@ -53,15 +112,14 @@ export const NotePalette: React.FC<Props> = ({
     duration: DurationValue;
     val: DurationValue;
     label: string;
-    glyph: string;
     shortcut: string;
   }[] = [
-    { duration: 1, val: 1, label: 'Whole', glyph: '𝅝', shortcut: '1' },
-    { duration: 2, val: 2, label: 'Half', glyph: '𝅗𝅥', shortcut: '2' },
-    { duration: 4, val: 4, label: 'Quarter', glyph: '𝅘𝅥', shortcut: '3' },
-    { duration: 8, val: 8, label: 'Eighth', glyph: '𝅘𝅥𝅯', shortcut: '4' },
-    { duration: 16, val: 16, label: '16th', glyph: '𝅘𝅥𝅰', shortcut: '5' },
-    { duration: 32, val: 32, label: '32nd', glyph: '𝅘𝅥𝅯', shortcut: '6' },
+    { duration: 1, val: 1, label: 'Whole', shortcut: '1' },
+    { duration: 2, val: 2, label: 'Half', shortcut: '2' },
+    { duration: 4, val: 4, label: 'Quarter', shortcut: '3' },
+    { duration: 8, val: 8, label: 'Eighth', shortcut: '4' },
+    { duration: 16, val: 16, label: '16th', shortcut: '5' },
+    { duration: 32, val: 32, label: '32nd', shortcut: '6' },
   ];
 
   const handleDurationClick = (val: DurationValue) => {
@@ -123,14 +181,15 @@ export const NotePalette: React.FC<Props> = ({
               key={d.duration}
               type="button"
               onClick={() => handleDurationClick(d.duration)}
-              className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+              className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors flex items-center gap-1.5 ${
                 entryState.duration === d.duration
                   ? 'bg-blue-600 text-white font-bold shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
               data-testid={`duration-${d.duration}`}
             >
-              {d.glyph} {d.label} ({d.shortcut})
+              <DurationIcon duration={d.duration} />
+              <span>{d.label} ({d.shortcut})</span>
             </button>
           ))}
 
@@ -213,6 +272,30 @@ export const NotePalette: React.FC<Props> = ({
             data-testid="btn-beam"
           >
             Beam (B)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => dispatch?.({ type: 'TOGGLE_AUTO_BEAMING' })}
+            className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+              autoBeaming
+                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            title="Toggle Auto-Beaming"
+            data-testid="btn-auto-beam"
+          >
+            Auto Beam
+          </button>
+
+          <button
+            type="button"
+            onClick={() => dispatch?.({ type: 'BATCH_TOGGLE_TUPLET', actual: 3, normal: 2 })}
+            className="px-2 py-1 rounded text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 cursor-pointer transition-colors font-semibold"
+            title="Toggle Triplet 3:2 (Shift+T)"
+            data-testid="btn-triplet"
+          >
+            Triplet (3)
           </button>
         </div>
 

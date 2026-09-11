@@ -17,6 +17,7 @@ import {
   STAFF_LINE_SPACING,
   STAFF_START_X,
   computeSlurGeometry,
+  computeTupletGroups,
   computeStaffBeams,
   computeStaffLyricsLayout,
   calculatePitchY,
@@ -84,7 +85,7 @@ export const StaffSvg: React.FC<Props> = ({
   fullStaffElements,
   scale = 1.0,
   fonts,
-  autoBeaming = true,
+  autoBeaming = false,
 }) => {
   const effectiveStaff: Staff = staff
     ? {
@@ -399,6 +400,95 @@ export const StaffSvg: React.FC<Props> = ({
       }
     });
   }
+
+  // Tuplet Brackets and Numbers
+  const tupletGroups = computeTupletGroups(
+    positionedElements,
+    centerY,
+    scale,
+    hasSubstaff ? 'voice-1' : undefined
+  );
+  const tupletElements: React.ReactNode[] = tupletGroups.map((tg, idx) => {
+    const halfGap = 9 * scale;
+    const gapLeft = tg.numberX - halfGap;
+    const gapRight = tg.numberX + halfGap;
+    const bracketPath = tg.hasBracket
+      ? `M ${tg.startX} ${tg.tickY} L ${tg.startX} ${tg.bracketY} L ${gapLeft} ${tg.bracketY} M ${gapRight} ${tg.bracketY} L ${tg.endX} ${tg.bracketY} L ${tg.endX} ${tg.tickY}`
+      : undefined;
+
+    return (
+      <g key={`tuplet-${idx}-${tg.elementIds.join('-')}`} data-testid="tuplet-group">
+        {bracketPath && (
+          <path
+            d={bracketPath}
+            fill="none"
+            stroke="#0f172a"
+            strokeWidth={1.4 * scale}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            data-testid="tuplet-bracket"
+          />
+        )}
+        <text
+          x={tg.numberX}
+          y={tg.numberY}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={13 * scale}
+          fontFamily="serif"
+          fontWeight="bold"
+          fontStyle="italic"
+          fill="#0f172a"
+          data-testid="tuplet-number"
+        >
+          {tg.actual}
+        </text>
+      </g>
+    );
+  });
+
+  const substaffTupletGroups =
+    substaffElements && substaffPositioned.length > 0
+      ? computeTupletGroups(substaffPositioned, centerY, scale, 'voice-2')
+      : [];
+  const substaffTupletElements: React.ReactNode[] = substaffTupletGroups.map((tg, idx) => {
+    const halfGap = 9 * scale;
+    const gapLeft = tg.numberX - halfGap;
+    const gapRight = tg.numberX + halfGap;
+    const bracketPath = tg.hasBracket
+      ? `M ${tg.startX} ${tg.tickY} L ${tg.startX} ${tg.bracketY} L ${gapLeft} ${tg.bracketY} M ${gapRight} ${tg.bracketY} L ${tg.endX} ${tg.bracketY} L ${tg.endX} ${tg.tickY}`
+      : undefined;
+
+    return (
+      <g key={`sub-tuplet-${idx}-${tg.elementIds.join('-')}`} data-testid="tuplet-group">
+        {bracketPath && (
+          <path
+            d={bracketPath}
+            fill="none"
+            stroke="#0f172a"
+            strokeWidth={1.4 * scale}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            data-testid="tuplet-bracket"
+          />
+        )}
+        <text
+          x={tg.numberX}
+          y={tg.numberY}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={13 * scale}
+          fontFamily="serif"
+          fontWeight="bold"
+          fontStyle="italic"
+          fill="#0f172a"
+          data-testid="tuplet-number"
+        >
+          {tg.actual}
+        </text>
+      </g>
+    );
+  });
 
   // Metric Note Beams
   const activeTimeSig = effectiveStaff.elements.find((e): e is TimeSignatureElement => e.type === 'time');
@@ -822,6 +912,10 @@ export const StaffSvg: React.FC<Props> = ({
       {/* Hairpin Spanners */}
       {hairpinPaths}
       {substaffHairpinPaths}
+
+      {/* Tuplet Brackets and Numbers */}
+      {tupletElements}
+      {substaffTupletElements}
 
       {/* Barline Measure Numbers */}
       {barlineMeasureNodes}

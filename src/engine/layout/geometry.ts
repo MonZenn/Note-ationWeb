@@ -229,7 +229,11 @@ export function computeElementBeatDuration(element: MusicElement): number {
     else if (element.dots === 2) dotMultiplier = 1.75;
     else if (element.dots > 2) dotMultiplier = 2 - Math.pow(0.5, element.dots);
 
-    return baseBeats * dotMultiplier;
+    let totalBeats = baseBeats * dotMultiplier;
+    if (element.tuplet && element.tuplet.actual > 0 && element.tuplet.normal > 0) {
+      totalBeats *= element.tuplet.normal / element.tuplet.actual;
+    }
+    return totalBeats;
   }
   return 0;
 }
@@ -305,8 +309,26 @@ export function computeSlurGeometry(
     const notesInSpan = span
       .map((s) => s.element)
       .filter((e): e is NoteElement => e.type === 'note');
-    const allStemsUp = notesInSpan.length > 0 && notesInSpan.every((n) => getEffectiveStemDirection(n, voice) === 'up');
-    effectiveDir = allStemsUp ? 'below' : 'above';
+    const stemsUpCount = notesInSpan.filter((n) => getEffectiveStemDirection(n, voice) === 'up').length;
+    const stemsDownCount = notesInSpan.length - stemsUpCount;
+    if (stemsUpCount > stemsDownCount) {
+      effectiveDir = 'below';
+    } else if (stemsDownCount > stemsUpCount) {
+      effectiveDir = 'above';
+    } else {
+      let totalOffset = 0;
+      let pitchCount = 0;
+      for (const n of notesInSpan) {
+        if (n.pitches) {
+          for (const p of n.pitches) {
+            totalOffset += p.diatonicOffset;
+            pitchCount++;
+          }
+        }
+      }
+      const avgOffset = pitchCount > 0 ? totalOffset / pitchCount : 0;
+      effectiveDir = avgOffset < 0 ? 'below' : 'above';
+    }
   }
 
   const getNotePitchBounds = (note: NoteElement) => {
@@ -329,38 +351,16 @@ export function computeSlurGeometry(
   let endAnchorY: number;
 
   if (effectiveDir === 'below') {
-    if (getEffectiveStemDirection(startNote, voice) === 'down') {
-      startAnchorX = startElemPos.x + 1.5;
-      startAnchorY = startBounds.bottomY + 32 * scale + 4 * scale;
-    } else {
-      startAnchorX = startElemPos.x + 7;
-      startAnchorY = startBounds.bottomY + 8 * scale;
-    }
-
-    if (getEffectiveStemDirection(endNote, voice) === 'down') {
-      endAnchorX = endElemPos.x + 1.5;
-      endAnchorY = endBounds.bottomY + 32 * scale + 4 * scale;
-    } else {
-      endAnchorX = endElemPos.x + 7;
-      endAnchorY = endBounds.bottomY + 8 * scale;
-    }
+    startAnchorX = Number((startElemPos.x + 7 * scale).toFixed(2));
+    startAnchorY = Number((startBounds.bottomY + 4.5 * scale).toFixed(2));
+    endAnchorX = Number((endElemPos.x + 7 * scale).toFixed(2));
+    endAnchorY = Number((endBounds.bottomY + 4.5 * scale).toFixed(2));
   } else {
     // Curving above
-    if (getEffectiveStemDirection(startNote, voice) === 'up') {
-      startAnchorX = startElemPos.x + 12.5;
-      startAnchorY = startBounds.topY - 32 * scale - 4 * scale;
-    } else {
-      startAnchorX = startElemPos.x + 7;
-      startAnchorY = startBounds.topY - 8 * scale;
-    }
-
-    if (getEffectiveStemDirection(endNote, voice) === 'up') {
-      endAnchorX = endElemPos.x + 12.5;
-      endAnchorY = endBounds.topY - 32 * scale - 4 * scale;
-    } else {
-      endAnchorX = endElemPos.x + 7;
-      endAnchorY = endBounds.topY - 8 * scale;
-    }
+    startAnchorX = Number((startElemPos.x + 7 * scale).toFixed(2));
+    startAnchorY = Number((startBounds.topY - 4.5 * scale).toFixed(2));
+    endAnchorX = Number((endElemPos.x + 7 * scale).toFixed(2));
+    endAnchorY = Number((endBounds.topY - 4.5 * scale).toFixed(2));
   }
 
   let apexY: number;
@@ -379,7 +379,7 @@ export function computeSlurGeometry(
         }
       }
     }
-    apexY = Math.max(maxY + 10, Math.max(startAnchorY, endAnchorY) + naturalBow);
+    apexY = Math.max(maxY + 12 * scale, Math.max(startAnchorY, endAnchorY) + naturalBow);
   } else {
     let minY = Math.min(startAnchorY, endAnchorY);
     for (const item of span) {
@@ -392,7 +392,7 @@ export function computeSlurGeometry(
         }
       }
     }
-    apexY = Math.min(minY - 10, Math.min(startAnchorY, endAnchorY) - naturalBow);
+    apexY = Math.min(minY - 12 * scale, Math.min(startAnchorY, endAnchorY) - naturalBow);
   }
 
   const cp1X = Number((startAnchorX + dx * 0.32).toFixed(2));
@@ -437,9 +437,13 @@ export interface BeamedGroupGeometry {
 function getElementQuarterDuration(elem: MusicElement): number {
   if (elem.type === 'note' || elem.type === 'rest') {
     const base = 4 / elem.duration;
-    if (elem.dots === 1) return base * 1.5;
-    if (elem.dots === 2) return base * 1.75;
-    return base;
+    let dur = base;
+    if (elem.dots === 1) dur = base * 1.5;
+    else if (elem.dots === 2) dur = base * 1.75;
+    if (elem.tuplet && elem.tuplet.actual > 0 && elem.tuplet.normal > 0) {
+      dur *= elem.tuplet.normal / elem.tuplet.actual;
+    }
+    return dur;
   }
   return 0;
 }
@@ -576,8 +580,23 @@ export function computeBeamedGroups(
       continue;
     }
 
-    if (prev.note.beam === 'join' || elem.beam === 'join') {
+    if (elem.beam === 'join') {
+      if (
+        (prev.note.beamGroupId || elem.beamGroupId) &&
+        prev.note.beamGroupId !== elem.beamGroupId
+      ) {
+        flushActiveGroup();
+        activeGroup = [{ note: elem, index: elemIdx, startTime: noteStartTime, endTime: noteEndTime }];
+        continue;
+      }
       activeGroup.push({ note: elem, index: elemIdx, startTime: noteStartTime, endTime: noteEndTime });
+      continue;
+    }
+
+    // If previous note was explicitly joined but current note is not, the joined group ends
+    if (prev.note.beam === 'join') {
+      flushActiveGroup();
+      activeGroup = [{ note: elem, index: elemIdx, startTime: noteStartTime, endTime: noteEndTime }];
       continue;
     }
 
@@ -1209,6 +1228,133 @@ export function analyzeKeySignatureChange(
     cancelCount: 0,
     cancelIndices: [],
   };
+}
+
+export interface TupletLayoutGroup {
+  elementIds: string[];
+  actual: number;
+  normal: number;
+  startX: number;
+  endX: number;
+  bracketY: number;
+  numberX: number;
+  numberY: number;
+  placement: 'above' | 'below';
+  hasBracket: boolean;
+  tickY: number;
+}
+
+export function computeTupletGroups(
+  elementsWithPositions: { element: MusicElement; x: number; width?: number }[],
+  centerY: number,
+  scale: number = 1.0,
+  voice?: 'voice-1' | 'voice-2'
+): TupletLayoutGroup[] {
+  const groups: TupletLayoutGroup[] = [];
+  let currentGroup: { element: NoteElement | RestElement; x: number; index: number }[] = [];
+
+  const flushGroup = () => {
+    if (currentGroup.length === 0) return;
+    const first = currentGroup[0].element;
+    const actual = first.tuplet?.actual ?? currentGroup.length;
+    const normal = first.tuplet?.normal ?? (actual === 3 ? 2 : actual <= 4 ? 2 : 4);
+
+    const startX = currentGroup[0].x + 2 * scale;
+    const endX = currentGroup[currentGroup.length - 1].x + 16 * scale;
+    const numberX = Number(((startX + endX) / 2).toFixed(1));
+
+    // Determine placement
+    let placement: 'above' | 'below' = 'above';
+    if (voice === 'voice-2') {
+      placement = 'below';
+    } else if (voice === 'voice-1') {
+      placement = 'above';
+    } else {
+      placement = 'above';
+    }
+
+    let bracketY: number;
+    let tickY: number;
+    let numberY: number;
+
+    if (placement === 'above') {
+      let minY = centerY - 20 * scale;
+      for (const item of currentGroup) {
+        if (item.element.type === 'note') {
+          const ys = item.element.pitches?.map((p) => calculatePitchY(centerY, p.diatonicOffset, scale)) ?? [centerY];
+          const topY = Math.min(...ys);
+          const stemDir = getEffectiveStemDirection(item.element, voice);
+          if (stemDir === 'up') {
+            minY = Math.min(minY, topY - 32 * scale);
+          } else {
+            minY = Math.min(minY, topY);
+          }
+        } else {
+          minY = Math.min(minY, centerY - 10 * scale);
+        }
+      }
+      bracketY = Number((minY - 12 * scale).toFixed(1));
+      tickY = Number((bracketY + 4 * scale).toFixed(1));
+      numberY = Number((bracketY - 2 * scale).toFixed(1));
+    } else {
+      let maxY = centerY + 20 * scale;
+      for (const item of currentGroup) {
+        if (item.element.type === 'note') {
+          const ys = item.element.pitches?.map((p) => calculatePitchY(centerY, p.diatonicOffset, scale)) ?? [centerY];
+          const bottomY = Math.max(...ys);
+          const stemDir = getEffectiveStemDirection(item.element, voice);
+          if (stemDir === 'down') {
+            maxY = Math.max(maxY, bottomY + 32 * scale);
+          } else {
+            maxY = Math.max(maxY, bottomY);
+          }
+        } else {
+          maxY = Math.max(maxY, centerY + 10 * scale);
+        }
+      }
+      bracketY = Number((maxY + 14 * scale).toFixed(1));
+      tickY = Number((bracketY - 4 * scale).toFixed(1));
+      numberY = Number((bracketY + 12 * scale).toFixed(1));
+    }
+
+    groups.push({
+      elementIds: currentGroup.map((g) => g.element.id),
+      actual,
+      normal,
+      startX,
+      endX,
+      bracketY,
+      numberX,
+      numberY,
+      placement,
+      hasBracket: first.tuplet?.bracket !== false,
+      tickY,
+    });
+
+    currentGroup = [];
+  };
+
+  for (let i = 0; i < elementsWithPositions.length; i++) {
+    const item = elementsWithPositions[i];
+    if ((item.element.type === 'note' || item.element.type === 'rest') && item.element.tuplet) {
+      if (currentGroup.length > 0) {
+        const first = currentGroup[0].element;
+        const targetActual = first.tuplet?.actual ?? 3;
+        if (
+          currentGroup.length >= targetActual ||
+          item.element.tuplet.actual !== first.tuplet?.actual
+        ) {
+          flushGroup();
+        }
+      }
+      currentGroup.push({ element: item.element, x: item.x, index: i });
+    } else {
+      flushGroup();
+    }
+  }
+  flushGroup();
+
+  return groups;
 }
 
 export { computeScoreMeasureNumbers, type MeasureNumberInfo } from './measureUtils';

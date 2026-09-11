@@ -201,6 +201,7 @@ export default function App() {
           selectedRange={state.selectedRange}
           activeElement={activeElement}
           dispatch={dispatch}
+          autoBeaming={state.present.info.autoBeaming === true}
           onInsertBar={() =>
             dispatch({
               type: 'INSERT_ELEMENT',
