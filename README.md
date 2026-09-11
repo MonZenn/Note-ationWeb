@@ -1,6 +1,11 @@
 # NoteationWeb 🎵
 ### Free Web Application for Music Notation
 
+[![Live Demo](https://img.shields.io/badge/Live_App-monzenn.github.io%2FNoteationWeb-22c55e?style=for-the-badge&logo=githubpages&logoColor=white)](https://monzenn.github.io/NoteationWeb/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](https://opensource.org/licenses/MIT)
+
+> 🌐 **Live Website:** [https://monzenn.github.io/NoteationWeb/](https://monzenn.github.io/NoteationWeb/)
+
 **NoteationWeb** is an open-source, 100% client-side web application designed for fast, intuitive, and professional music notation editing directly in your web browser. It combines a rapid keyboard-driven workflow and horizontal ribbon canvas with an advanced vector sheet view, dynamic typography, polyphonic Web Audio synthesis, and multi-page print/PDF export.
 
 **Created and Developed by Ramon John L. Dela Cruz**
@@ -11,6 +16,7 @@
 
 - **100% Free & Open Source:** Free to use, modify, and distribute under the permissive MIT License.
 - **Zero Backend / Complete Privacy:** Operates entirely inside your browser using client-side JavaScript/TypeScript and standard Web APIs. No accounts, no servers, no databases, and zero tracking or telemetry. Your music files remain 100% private on your machine.
+- **Instant In-Browser Access:** Launch [monzenn.github.io/NoteationWeb](https://monzenn.github.io/NoteationWeb/) to start composing immediately without installing any software or registering an account.
 - **Dual Visual Workflows:**
   - **Continuous Ribbon View:** A smooth, horizontally scrolling multi-staff canvas optimized for rapid note entry, auditioning, and real-time editing.
   - **Paginated Page View:** A print-ready multi-page layout engine with automatic measure wrapping, system grouping, dynamic headers, system brackets/braces, measure numbers, and vector PDF export.
@@ -114,16 +120,22 @@ NoteationWeb is built from the ground up for lightning-fast keyboard-driven comp
 
 ---
 
-## 💻 Getting Started Locally
+## 💻 Getting Started
 
-### Prerequisites
+### 🌐 Direct Browser Access
+NoteationWeb runs 100% in your browser without requiring any software installation:
+👉 **[Open NoteationWeb](https://monzenn.github.io/NoteationWeb/)**
+
+### 🛠️ Local Development Setup
+
+#### Prerequisites
 - **Node.js** (v18 or higher recommended)
 - **npm** (v9 or higher)
 
-### Installation & Development
+#### Installation & Development
 ```bash
 # Clone repository
-git clone https://github.com/monjohn/NoteationWeb.git
+git clone https://github.com/MonZenn/NoteationWeb.git
 cd NoteationWeb
 
 # Install dependencies
