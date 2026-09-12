@@ -1,5 +1,5 @@
 export type ClefType = 'treble' | 'bass' | 'alto' | 'tenor';
-export type DurationValue = 1 | 2 | 4 | 8 | 16 | 32;
+export type DurationValue = 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256;
 export type AccidentalType = 'natural' | 'flat' | 'sharp' | 'double-sharp' | 'double-flat';
 export type BarType = 'single' | 'double' | 'final' | 'repeat-start' | 'repeat-end' | 'repeat-both';
 export type StemDirection = 'auto' | 'up' | 'down';
@@ -63,11 +63,18 @@ export interface NoteElement {
   lyric?: string;
 }
 
-export type HairpinType = 'crescendo' | 'decrescendo';
+export type HairpinType = 'crescendo' | 'decrescendo' | 'cresc' | 'decresc';
 
 export interface HairpinSpanner {
   type: HairpinType;
   targetNoteId: string;
+}
+
+export interface TiePair {
+  sourceNote: NoteElement;
+  targetNote: NoteElement;
+  pitchOffset: number;
+  isCrossMeasure: boolean;
 }
 
 

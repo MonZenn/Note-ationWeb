@@ -42,7 +42,7 @@ export const HeaderBar: React.FC<Props> = ({
   return (
     <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between border-b border-slate-800 select-none no-print print:hidden">
       <div className="flex items-center gap-4">
-        <span className="font-black text-lg text-blue-400 tracking-wide">NoteationWeb</span>
+        <span className="font-black text-lg text-blue-400 tracking-wide">Note-ation</span>
         <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
           {scoreInfo.title || 'Untitled'}
         </span>

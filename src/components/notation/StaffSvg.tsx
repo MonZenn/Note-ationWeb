@@ -22,6 +22,8 @@ import {
   computeStaffLyricsLayout,
   calculatePitchY,
   MeasureNumberInfo,
+  resolveStaffTies,
+  computeTieGeometry,
 } from '../../engine/layout/geometry';
 
 import { computeStaffElementPositions, PositionedElement } from '../../engine/layout/ribbon';
@@ -266,6 +268,58 @@ export const StaffSvg: React.FC<Props> = ({
     );
   }
 
+  // Metric Note Beams
+  const activeTimeSig = effectiveStaff.elements.find((e): e is TimeSignatureElement => e.type === 'time');
+  const beamedGroups = computeStaffBeams(
+    positionedElements,
+    centerY,
+    activeTimeSig,
+    scale,
+    hasSubstaff ? 'voice-1' : undefined,
+    autoBeaming
+  );
+  const beamedNoteMap = new Map<string, { stemDirection: 'up' | 'down'; stemTipY: number }>();
+  for (const bg of beamedGroups) {
+    for (const item of bg.notes) {
+      beamedNoteMap.set(item.note.id, {
+        stemDirection: bg.stemDirection,
+        stemTipY: item.stemTipY,
+      });
+    }
+  }
+
+  const shiftedSubstaffPositioned = substaffPositioned.map(({ element, x, width }) => {
+    let shift = 0;
+    if (element.type === 'note') {
+      const v2Offsets = element.pitches.map((p) => p.diatonicOffset);
+      const coincidingV1 = positionedElements.find(
+        (p) =>
+          p.element.type === 'note' &&
+          Math.abs(p.x - x) < 14 * scale &&
+          (p.element as NoteElement).pitches.some((p1) =>
+            v2Offsets.some((p2) => Math.abs(p1.diatonicOffset - p2) <= 1)
+          )
+      );
+      if (coincidingV1) {
+        shift = 9 * scale;
+      }
+    }
+    return { element, x: x + shift, width };
+  });
+
+  const subBeamedGroups = shiftedSubstaffPositioned.length > 0
+    ? computeStaffBeams(shiftedSubstaffPositioned, centerY, activeTimeSig, scale, 'voice-2', autoBeaming)
+    : [];
+  const subBeamedNoteMap = new Map<string, { stemDirection: 'up' | 'down'; stemTipY: number }>();
+  for (const bg of subBeamedGroups) {
+    for (const item of bg.notes) {
+      subBeamedNoteMap.set(item.note.id, {
+        stemDirection: bg.stemDirection,
+        stemTipY: item.stemTipY,
+      });
+    }
+  }
+
   // Multi-Note Phrase Slurs
   const slurPaths: React.ReactNode[] = [];
   positionedElements.forEach(({ element }) => {
@@ -281,7 +335,8 @@ export const StaffSvg: React.FC<Props> = ({
           positionedElements,
           centerY,
           scale,
-          hasSubstaff ? 'voice-1' : undefined
+          hasSubstaff ? 'voice-1' : undefined,
+          beamedGroups
         );
         if (slurGeom) {
           slurPaths.push(
@@ -313,23 +368,57 @@ export const StaffSvg: React.FC<Props> = ({
         const x2 = Math.max(startPos.x + startPos.width, targetPos.x + targetPos.width) - 8;
         const yMid = centerY + 40;
         const spread = 6;
-        const isCrescendo = element.hairpin.type === 'crescendo';
+        const isTextDynamic = element.hairpin.type === 'cresc' || element.hairpin.type === 'decresc';
 
-        const d = isCrescendo
-          ? `M ${x2} ${yMid - spread} L ${x1} ${yMid} L ${x2} ${yMid + spread}`
-          : `M ${x1} ${yMid - spread} L ${x2} ${yMid} L ${x1} ${yMid + spread}`;
+        if (isTextDynamic) {
+          const textLabel = element.hairpin.type === 'cresc' ? 'cresc.' : 'decresc.';
+          const textWidth = textLabel.length * 6.5 + 4;
+          const lineStartX = Math.min(x2 - 10, x1 + textWidth);
 
-        hairpinPaths.push(
-          <path
-            key={`hairpin-${element.id}-${element.hairpin.targetNoteId}`}
-            d={d}
-            fill="none"
-            stroke="#0f172a"
-            strokeWidth="1.5"
-            data-testid="hairpin-spanner"
-            data-hairpin-type={element.hairpin.type}
-          />
-        );
+          hairpinPaths.push(
+            <g
+              key={`hairpin-${element.id}-${element.hairpin.targetNoteId}`}
+              data-testid="hairpin-spanner"
+              data-hairpin-type={element.hairpin.type}
+            >
+              <text
+                x={x1}
+                y={yMid + 4}
+                className="font-serif italic font-semibold text-[13px] fill-slate-900 select-none"
+              >
+                {textLabel}
+              </text>
+              {lineStartX < x2 && (
+                <line
+                  x1={lineStartX}
+                  y1={yMid}
+                  x2={x2}
+                  y2={yMid}
+                  stroke="#0f172a"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 3"
+                />
+              )}
+            </g>
+          );
+        } else {
+          const isCrescendo = element.hairpin.type === 'crescendo';
+          const d = isCrescendo
+            ? `M ${x2} ${yMid - spread} L ${x1} ${yMid} L ${x2} ${yMid + spread}`
+            : `M ${x1} ${yMid - spread} L ${x2} ${yMid} L ${x1} ${yMid + spread}`;
+
+          hairpinPaths.push(
+            <path
+              key={`hairpin-${element.id}-${element.hairpin.targetNoteId}`}
+              d={d}
+              fill="none"
+              stroke="#0f172a"
+              strokeWidth="1.5"
+              data-testid="hairpin-spanner"
+              data-hairpin-type={element.hairpin.type}
+            />
+          );
+        }
       }
     }
   });
@@ -351,7 +440,8 @@ export const StaffSvg: React.FC<Props> = ({
             substaffPositioned,
             centerY,
             scale,
-            'voice-2'
+            'voice-2',
+            subBeamedGroups
           );
           if (slurGeom) {
             substaffSlurPaths.push(
@@ -379,24 +469,117 @@ export const StaffSvg: React.FC<Props> = ({
           const x2 = Math.max(startPos.x + startPos.width, targetPos.x + targetPos.width) - 8;
           const yMid = centerY + 40;
           const spread = 6;
-          const isCrescendo = element.hairpin.type === 'crescendo';
+          const isTextDynamic = element.hairpin.type === 'cresc' || element.hairpin.type === 'decresc';
 
-          const d = isCrescendo
-            ? `M ${x2} ${yMid - spread} L ${x1} ${yMid} L ${x2} ${yMid + spread}`
-            : `M ${x1} ${yMid - spread} L ${x2} ${yMid} L ${x1} ${yMid + spread}`;
+          if (isTextDynamic) {
+            const textLabel = element.hairpin.type === 'cresc' ? 'cresc.' : 'decresc.';
+            const textWidth = textLabel.length * 6.5 + 4;
+            const lineStartX = Math.min(x2 - 10, x1 + textWidth);
 
-          substaffHairpinPaths.push(
-            <path
-              key={`sub-hairpin-${element.id}-${element.hairpin.targetNoteId}`}
-              d={d}
-              fill="none"
-              stroke="#0f172a"
-              strokeWidth="1.5"
-              data-testid="hairpin-spanner"
-              data-hairpin-type={element.hairpin.type}
-            />
-          );
+            substaffHairpinPaths.push(
+              <g
+                key={`sub-hairpin-${element.id}-${element.hairpin.targetNoteId}`}
+                data-testid="hairpin-spanner"
+                data-hairpin-type={element.hairpin.type}
+              >
+                <text
+                  x={x1}
+                  y={yMid + 4}
+                  className="font-serif italic font-semibold text-[13px] fill-slate-900 select-none"
+                >
+                  {textLabel}
+                </text>
+                {lineStartX < x2 && (
+                  <line
+                    x1={lineStartX}
+                    y1={yMid}
+                    x2={x2}
+                    y2={yMid}
+                    stroke="#0f172a"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 3"
+                  />
+                )}
+              </g>
+            );
+          } else {
+            const isCrescendo = element.hairpin.type === 'crescendo';
+            const d = isCrescendo
+              ? `M ${x2} ${yMid - spread} L ${x1} ${yMid} L ${x2} ${yMid + spread}`
+              : `M ${x1} ${yMid - spread} L ${x2} ${yMid} L ${x1} ${yMid + spread}`;
+
+            substaffHairpinPaths.push(
+              <path
+                key={`sub-hairpin-${element.id}-${element.hairpin.targetNoteId}`}
+                d={d}
+                fill="none"
+                stroke="#0f172a"
+                strokeWidth="1.5"
+                data-testid="hairpin-spanner"
+                data-hairpin-type={element.hairpin.type}
+              />
+            );
+          }
         }
+      }
+    });
+  }
+
+
+  // Cross-Measure & Intra-Measure Tie Spanners (TASK-25)
+  const tiePaths: React.ReactNode[] = [];
+  const resolvedTieNoteIds = new Set<string>();
+
+  const elementsForTies = fullStaffElements || effectiveStaff.elements;
+  const staffTies = resolveStaffTies(elementsForTies);
+
+  staffTies.forEach((tie) => {
+    const geom = computeTieGeometry(tie, positionedElements, centerY, scale, {
+      systemWidth: width,
+      systemStartX: STAFF_START_X * scale,
+      voice: hasSubstaff ? 'voice-1' : undefined,
+    });
+    if (geom) {
+      resolvedTieNoteIds.add(tie.sourceNote.id);
+      tiePaths.push(
+        <path
+          key={`tie-${tie.sourceNote.id}-${tie.targetNote.id}-${tie.pitchOffset}`}
+          d={geom.path}
+          fill="none"
+          stroke="#0f172a"
+          strokeWidth={1.8 * scale}
+          data-testid="tie-spanner"
+          data-tie-type={geom.type}
+          data-is-cross-measure={tie.isCrossMeasure ? 'true' : 'false'}
+        />
+      );
+    }
+  });
+
+  // Substaff Ties (Voice 2)
+  const substaffTiePaths: React.ReactNode[] = [];
+  if (substaffElements && substaffPositioned.length > 0) {
+    const subTies = resolveStaffTies(substaffElements);
+    subTies.forEach((tie) => {
+      const geom = computeTieGeometry(tie, substaffPositioned, centerY, scale, {
+        systemWidth: width,
+        systemStartX: STAFF_START_X * scale,
+        voice: 'voice-2',
+      });
+      if (geom) {
+        resolvedTieNoteIds.add(tie.sourceNote.id);
+        substaffTiePaths.push(
+          <path
+            key={`sub-tie-${tie.sourceNote.id}-${tie.targetNote.id}-${tie.pitchOffset}`}
+            d={geom.path}
+            fill="none"
+            stroke="#0f172a"
+            strokeWidth={1.8 * scale}
+            data-testid="tie-spanner"
+            data-tie-type={geom.type}
+            data-is-cross-measure={tie.isCrossMeasure ? 'true' : 'false'}
+          />
+        );
       }
     });
   }
@@ -489,58 +672,6 @@ export const StaffSvg: React.FC<Props> = ({
       </g>
     );
   });
-
-  // Metric Note Beams
-  const activeTimeSig = effectiveStaff.elements.find((e): e is TimeSignatureElement => e.type === 'time');
-  const beamedGroups = computeStaffBeams(
-    positionedElements,
-    centerY,
-    activeTimeSig,
-    scale,
-    hasSubstaff ? 'voice-1' : undefined,
-    autoBeaming
-  );
-  const beamedNoteMap = new Map<string, { stemDirection: 'up' | 'down'; stemTipY: number }>();
-  for (const bg of beamedGroups) {
-    for (const item of bg.notes) {
-      beamedNoteMap.set(item.note.id, {
-        stemDirection: bg.stemDirection,
-        stemTipY: item.stemTipY,
-      });
-    }
-  }
-
-  const shiftedSubstaffPositioned = substaffPositioned.map(({ element, x, width }) => {
-    let shift = 0;
-    if (element.type === 'note') {
-      const v2Offsets = element.pitches.map((p) => p.diatonicOffset);
-      const coincidingV1 = positionedElements.find(
-        (p) =>
-          p.element.type === 'note' &&
-          Math.abs(p.x - x) < 14 * scale &&
-          (p.element as NoteElement).pitches.some((p1) =>
-            v2Offsets.some((p2) => Math.abs(p1.diatonicOffset - p2) <= 1)
-          )
-      );
-      if (coincidingV1) {
-        shift = 9 * scale;
-      }
-    }
-    return { element, x: x + shift, width };
-  });
-
-  const subBeamedGroups = shiftedSubstaffPositioned.length > 0
-    ? computeStaffBeams(shiftedSubstaffPositioned, centerY, activeTimeSig, scale, 'voice-2', autoBeaming)
-    : [];
-  const subBeamedNoteMap = new Map<string, { stemDirection: 'up' | 'down'; stemTipY: number }>();
-  for (const bg of subBeamedGroups) {
-    for (const item of bg.notes) {
-      subBeamedNoteMap.set(item.note.id, {
-        stemDirection: bg.stemDirection,
-        stemTipY: item.stemTipY,
-      });
-    }
-  }
 
   const hiddenIdsSet = new Set(multiMeasureRests?.flatMap((mm) => mm.hiddenElementIds) || []);
 
@@ -743,6 +874,7 @@ export const StaffSvg: React.FC<Props> = ({
                   : undefined
               }
               voice={hasSubstaff ? 'voice-1' : undefined}
+              hasResolvedTie={resolvedTieNoteIds.has(element.id)}
             />
           </g>
         );
@@ -814,6 +946,7 @@ export const StaffSvg: React.FC<Props> = ({
                   }
                   voice="voice-2"
                   noteheadShift={noteheadShift}
+                  hasResolvedTie={resolvedTieNoteIds.has(element.id)}
                 />
               </g>
             );
@@ -908,6 +1041,10 @@ export const StaffSvg: React.FC<Props> = ({
       {/* Multi-Note Phrase Slurs */}
       {slurPaths}
       {substaffSlurPaths}
+
+      {/* Tie Spanners (TASK-25) */}
+      {tiePaths}
+      {substaffTiePaths}
 
       {/* Hairpin Spanners */}
       {hairpinPaths}

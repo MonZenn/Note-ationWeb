@@ -6,6 +6,7 @@ import {
   calculateLedgerLines,
   STAFF_HEIGHT,
   getEffectiveStemDirection,
+  getNoteStemLength,
   KEY_SIGNATURE_OFFSETS,
 } from '../../engine/layout/geometry';
 import { REST_GLYPHS, MUSIC_GLYPHS } from '../../utils/musicGlyphs';
@@ -28,6 +29,7 @@ interface Props {
   isSelected?: boolean;
   voice?: 'voice-1' | 'voice-2';
   noteheadShift?: number;
+  hasResolvedTie?: boolean;
 }
 
 export const ElementSvg: React.FC<Props> = ({
@@ -42,6 +44,7 @@ export const ElementSvg: React.FC<Props> = ({
   isSelected = false,
   voice,
   noteheadShift = 0,
+  hasResolvedTie = false,
 }) => {
 
   if (element.type === 'note') {
@@ -170,11 +173,12 @@ export const ElementSvg: React.FC<Props> = ({
         {!isWhole && element.pitches.length > 0 && (() => {
           const xPos = (isDown ? 1.5 : 12.5) * scale + shiftX;
           const y1 = isDown ? topPitchY : bottomPitchY;
+          const stemLen = getNoteStemLength(element.duration, voice, noteheadScale);
           const y2 = beamInfo?.isBeamed
             ? beamInfo.stemTipY
             : isDown
-            ? bottomPitchY + 32 * noteheadScale
-            : topPitchY - 32 * noteheadScale;
+            ? bottomPitchY + stemLen
+            : topPitchY - stemLen;
 
           return (
             <line
@@ -188,11 +192,12 @@ export const ElementSvg: React.FC<Props> = ({
           );
         })()}
 
-        {/* Flags for 8th, 16th, and 32nd notes (suppressed when beamed) */}
+        {/* Flags for 8th, 16th, 32nd, 64th, 128th, 256th notes (suppressed when beamed) */}
         {!beamInfo?.isBeamed && element.duration >= 8 && element.pitches.length > 0 && (() => {
           const xPos = (isDown ? 1.5 : 12.5) * scale + shiftX;
-          const yTip = isDown ? bottomPitchY + 32 * noteheadScale : topPitchY - 32 * noteheadScale;
-          const flagCount = element.duration === 8 ? 1 : element.duration === 16 ? 2 : 3;
+          const stemLen = getNoteStemLength(element.duration, voice, noteheadScale);
+          const yTip = isDown ? bottomPitchY + stemLen : topPitchY - stemLen;
+          const flagCount = Math.round(Math.log2(element.duration)) - 2;
 
           return Array.from({ length: flagCount }).map((_, fIdx) => {
             const flagY = isDown ? yTip - fIdx * 5 * noteheadScale : yTip + fIdx * 5 * noteheadScale;
@@ -333,8 +338,8 @@ export const ElementSvg: React.FC<Props> = ({
           />
         )}
 
-        {/* Tie Out Curve */}
-        {element.tieOut && (
+        {/* Tie Out Curve (fallback when not resolved as a spanner) */}
+        {element.tieOut && !hasResolvedTie && (
           <path
             d={`M 14 ${tieY} C 20 ${tieY + 7 * scale}, 30 ${tieY + 7 * scale}, 36 ${tieY}`}
             fill="none"
@@ -796,40 +801,45 @@ export const ElementSvg: React.FC<Props> = ({
     if (mark === 'p') {
       glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: 0 });
     } else if (mark === 'pp') {
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: -3.5 });
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: 3.5 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: -4.5 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: 4.5 });
     } else if (mark === 'ppp') {
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: -7 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: -9 });
       glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: 0 });
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: 7 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: 9 });
     } else if (mark === 'f') {
       glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: 0 });
     } else if (mark === 'ff') {
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: -3.5 });
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: 3.5 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: -4.5 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: 4.5 });
     } else if (mark === 'fff') {
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: -7 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: -9 });
       glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: 0 });
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: 7 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: 9 });
     } else if (mark === 'mp') {
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicMezzo, dx: -5.5 });
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: 5.0 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicMezzo, dx: -6.5 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicPiano, dx: 6.0 });
     } else if (mark === 'mf') {
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicMezzo, dx: -5.0 });
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: 5.0 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicMezzo, dx: -6.0 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: 6.0 });
     } else if (mark === 'sfz') {
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicSforzando, dx: -7 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicSforzando, dx: -8 });
       glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: -0.5 });
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicZ, dx: 6 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicZ, dx: 7 });
     } else if (mark === 'fz') {
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: -3.5 });
-      glyphs.push({ path: MUSIC_GLYPHS.dynamicZ, dx: 3.5 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicForte, dx: -4.5 });
+      glyphs.push({ path: MUSIC_GLYPHS.dynamicZ, dx: 4.5 });
     }
 
-    const naturalElemWidth = mark === 'p' || mark === 'f' ? 20 : mark === 'ppp' || mark === 'fff' || mark === 'sfz' ? 32 : 24;
+    const naturalElemWidth =
+      mark === 'p' || mark === 'f'
+        ? 22
+        : mark === 'ppp' || mark === 'fff' || mark === 'sfz'
+        ? 36
+        : 28;
     const elemWidth = (width ?? naturalElemWidth) * scale;
     const centerX = elemWidth / 2;
-    const yPos = centerY + 26 * scale;
+    const yPos = centerY + 22 * scale;
 
     return (
       <g
@@ -843,6 +853,7 @@ export const ElementSvg: React.FC<Props> = ({
             d={g.path}
             transform={`translate(${centerX + g.dx * dynScale}, ${yPos}) scale(${dynScale})`}
             fill="#0f172a"
+            fillRule="evenodd"
           />
         ))}
       </g>

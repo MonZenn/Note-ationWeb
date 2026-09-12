@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
+@theme {
+  --font-serif: Georgia, "Times New Roman", "Palatino", serif;
+}
+
 @layer base {
+  .font-serif {
+    font-family: Georgia, "Times New Roman", "Palatino", serif;
+  }
   html, body, #root {
     height: 100%;
     margin: 0;

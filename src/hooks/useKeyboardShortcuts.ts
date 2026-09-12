@@ -11,6 +11,7 @@ export interface EntryState {
   pitchOffset: number;
   tieOut?: boolean;
   slurOut?: boolean;
+  staccato?: boolean;
 }
 
 export interface ShortcutCallbacks {
@@ -46,10 +47,13 @@ export function mapKeyToScoreAction(
 
   // Single-key shortcuts without Ctrl/Cmd
   if (!isCtrl) {
+    // Triplet shortcut: Shift + 3 (or Shift + #)
+    if (shiftKey && (key === '3' || key === '#')) return { type: 'BATCH_TOGGLE_TUPLET', actual: 3, normal: 2 };
+
     // Duration keys: 1-6
     if (key === '1') return { entryUpdate: { duration: 1 } };
     if (key === '2') return { entryUpdate: { duration: 2 } };
-    if (key === '3') return { entryUpdate: { duration: 4 } };
+    if (key === '3' && !shiftKey) return { entryUpdate: { duration: 4 } };
     if (key === '4') return { entryUpdate: { duration: 8 } };
     if (key === '5') return { entryUpdate: { duration: 16 } };
     if (key === '6') return { entryUpdate: { duration: 32 } };
@@ -79,7 +83,7 @@ export function mapKeyToScoreAction(
     if (key === 'v' || key === 'V') return { type: 'CYCLE_SLUR_DIRECTION' };
     if (key === '/') return { type: 'TOGGLE_SLUR_RANGE' };
     if (key === ';') return { type: 'TOGGLE_NOTE_ATTRIBUTE', attribute: 'tieOut' };
-    if (key === ',') return { type: 'TOGGLE_NOTE_ATTRIBUTE', attribute: 'staccato' };
+    if (key === ',') return { type: 'TOGGLE_NOTE_EXPRESSION', expression: 'staccato' };
     if (key === '_' || (shiftKey && key === '-')) return { type: 'TOGGLE_NOTE_ATTRIBUTE', attribute: 'tenuto' };
 
 
@@ -87,10 +91,10 @@ export function mapKeyToScoreAction(
     if (altKey && (key === 't' || key === 'T')) return { modal: 'tempo' };
     if (key === 'c' || key === 'C') return { modal: 'clef' };
     if (key === 'k' || key === 'K') return { modal: 'key' };
-    // Triplet shortcut: Shift + T
-    if (shiftKey && (key === 't' || key === 'T')) return { type: 'BATCH_TOGGLE_TUPLET', actual: 3, normal: 2 };
-    if (key === 'T' && !shiftKey) return { modal: 'time' };
-    if (key === 't' && !shiftKey) return { modal: 'text' };
+    // Time Signature modal: Shift + T (and capital T without Shift / CapsLock)
+    if ((key === 'T' || (shiftKey && (key === 't' || key === 'T'))) && !altKey) return { modal: 'time' };
+    // Text dialog: lowercase 't'
+    if (key === 't' && !shiftKey && !altKey) return { modal: 'text' };
     if (key === 'r' || key === 'R') return { modal: 'repeat' };
     if (key === 'f' || key === 'F') return { modal: 'flow' };
     if (key === 'x' || key === 'X') return { modal: 'expression' };
@@ -158,6 +162,7 @@ export function mapKeyToScoreAction(
         stemDirection: 'auto',
         tieOut: entry.tieOut,
         slurOut: entry.slurOut,
+        staccato: entry.staccato ? true : undefined,
       },
     };
   }
@@ -243,14 +248,21 @@ export function handleKeyDown(
     return;
   }
 
-  // Triplet Shortcut: Shift + T
-  if (e.shiftKey && (e.key === 't' || e.key === 'T') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+  const isCtrl = e.ctrlKey || e.metaKey;
+
+  // Triplet Shortcut: Shift + 3 (and Shift + # on international keyboards)
+  if (e.shiftKey && (e.key === '3' || e.key === '#') && !isCtrl && !e.altKey) {
     e.preventDefault();
     dispatch({ type: 'BATCH_TOGGLE_TUPLET', actual: 3, normal: 2 });
     return;
   }
 
-  const isCtrl = e.ctrlKey || e.metaKey;
+  // Time Signature Shortcut: Shift + T (and capital T)
+  if ((e.key === 'T' || (e.shiftKey && (e.key === 't' || e.key === 'T'))) && !isCtrl && !e.altKey) {
+    e.preventDefault();
+    openTimeFn?.();
+    return;
+  }
 
   // Page Setup Shortcut: Ctrl/Cmd + Shift + P
   if (isCtrl && e.shiftKey && (e.key === 'p' || e.key === 'P')) {
@@ -374,7 +386,7 @@ export function handleKeyDown(
         dispatch({ type: 'BATCH_SET_DURATION', duration: 2 });
         return;
       }
-      if (e.key === '3') {
+      if (e.key === '3' && !e.shiftKey) {
         e.preventDefault();
         dispatch({ type: 'BATCH_SET_DURATION', duration: 4 });
         return;
@@ -479,9 +491,9 @@ export function handleKeyDown(
         return;
       }
 
-      if (e.key === ',') {
+      if (e.key === ',' && !e.shiftKey) {
         e.preventDefault();
-        dispatch({ type: 'BATCH_TOGGLE_ATTRIBUTE', attribute: 'staccato' });
+        dispatch({ type: 'BATCH_TOGGLE_NOTE_EXPRESSION', expression: 'staccato' });
         return;
       }
       if (e.key === '_' || (e.shiftKey && e.key === '-')) {
@@ -558,6 +570,8 @@ export function handleKeyDown(
         }
       } else if (mapped.type === 'TOGGLE_SLUR_RANGE') {
         setEntryState((prev) => ({ ...prev, slurOut: !prev.slurOut }));
+      } else if (mapped.type === 'TOGGLE_NOTE_EXPRESSION' && mapped.expression === 'staccato') {
+        setEntryState((prev) => ({ ...prev, staccato: !prev.staccato }));
       } else if (mapped.type === 'INSERT_ELEMENT' && mapped.element.type === 'note') {
 
         const staff = state.present.staves[state.activeStaffIndex];
@@ -573,6 +587,10 @@ export function handleKeyDown(
             0.3
           );
         }
+        // Both Dot and Staccato reset to none after entering note
+        setEntryState((prev) => ({ ...prev, dots: 0, staccato: false }));
+      } else if (mapped.type === 'INSERT_ELEMENT' && mapped.element.type === 'rest') {
+        setEntryState((prev) => ({ ...prev, dots: 0, staccato: false }));
       } else if (mapped.type === 'ADD_CHORD_PITCH') {
         const staff = state.present.staves[state.activeStaffIndex];
         const context = getStaffContextAt(staff, state.cursorIndex);

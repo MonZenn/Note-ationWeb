@@ -1,7 +1,12 @@
 {
-  "name": "noteation-web",
+  "name": "note-ation",
   "private": true,
   "version": "1.0.0",
+  "description": "Note-ation: Modern, open-source, 100% client-side music notation editor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MonZenn/Note-ation.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

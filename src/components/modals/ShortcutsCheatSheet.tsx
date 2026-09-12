@@ -22,11 +22,13 @@ const SHORTCUTS: ShortcutItem[] = [
   { key: ';', desc: 'Toggle tie out on note', category: 'Entry & Rhythms' },
   { key: 'Tab', desc: 'Insert single bar line', category: 'Entry & Rhythms' },
 
+  { key: 'Shift + 3', desc: 'Toggle triplet (3 in space of 2 notes) on selection or note', category: 'Entry & Rhythms' },
+
   // Pitches & Signatures
   { key: '↑ / ↓', desc: 'Shift cursor pitch up / down diatonically', category: 'Pitches & Clefs' },
   { key: 'C', desc: 'Open Clef insertion dialog (Treble, Bass, Alto, Tenor)', category: 'Pitches & Clefs' },
   { key: 'K', desc: 'Open Key Signature dialog (-7 flats to +7 sharps)', category: 'Pitches & Clefs' },
-  { key: 'Shift + T', desc: 'Toggle triplet (3 in space of 2 notes) on selection or note', category: 'Entry & Rhythms' },
+  { key: 'Shift + T', desc: 'Open Time Signature dialog (Common, Cut, Custom X/Y)', category: 'Pitches & Clefs' },
   { key: 'Alt + T', desc: 'Open Tempo & Metronome dialog', category: 'Pitches & Clefs' },
   { key: 'T', desc: 'Open Text / Performance note dialog', category: 'Pitches & Clefs' },
   { key: 'Ctrl + K', desc: 'Insert Chord symbol above staff', category: 'Pitches & Clefs' },
@@ -34,7 +36,7 @@ const SHORTCUTS: ShortcutItem[] = [
 
   // Expressions & Phrasing
   { key: 'X / Shift + E', desc: 'Open Unified Expressions & Ornaments picker', category: 'Expressions & Phrasing' },
-  { key: ',', desc: 'Toggle staccato articulation dot', category: 'Expressions & Phrasing' },
+  { key: ',', desc: 'Toggle staccato articulation dot on note or selection', category: 'Expressions & Phrasing' },
   { key: '_', desc: 'Toggle tenuto articulation line', category: 'Expressions & Phrasing' },
   { key: '/', desc: 'Toggle multi-note phrase slur on selection or note', category: 'Expressions & Phrasing' },
   { key: 'V / Shift + /', desc: 'Cycle slur curve direction (Auto / Above / Below)', category: 'Expressions & Phrasing' },

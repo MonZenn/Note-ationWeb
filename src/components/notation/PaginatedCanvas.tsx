@@ -372,7 +372,7 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
           <div className="text-center text-slate-500 mt-6 border-t pt-2 flex flex-col items-center gap-1 shrink-0">
             <div style={getFontStyle(fonts.pageNumbers)}>— {pageIdx + 1} —</div>
             <div className="text-xs font-serif">
-              {score.info.copyright || `© ${new Date().getFullYear()} NoteationWeb`}
+              {score.info.copyright || `© ${new Date().getFullYear()} Note-ation`}
             </div>
           </div>
         </div>

@@ -71,7 +71,7 @@ const VALID_DYNAMIC_MARKS: Set<DynamicMark> = new Set([
   'sfz',
   'fz',
 ]);
-const VALID_HAIRPIN_TYPES: Set<HairpinType> = new Set(['crescendo', 'decrescendo']);
+const VALID_HAIRPIN_TYPES: Set<HairpinType> = new Set(['crescendo', 'decrescendo', 'cresc', 'decresc']);
 const VALID_TEXT_CATEGORIES: Set<TextCategory> = new Set(['chord', 'part', 'note']);
 const VALID_TEXT_PLACEMENTS: Set<TextPlacement> = new Set(['above', 'below']);
 

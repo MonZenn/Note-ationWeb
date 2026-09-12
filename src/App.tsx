@@ -17,7 +17,7 @@ import { FlowDialog } from './components/modals/FlowDialog';
 import { TextDialog } from './components/modals/TextDialog';
 import { ExpressionDialog } from './components/modals/ExpressionDialog';
 import { TempoDialog } from './components/modals/TempoDialog';
-import { TextCategory, TextElement, TempoElement, KeySignatureElement } from './types/score';
+import { TextCategory, TextElement, TempoElement, KeySignatureElement, BarType } from './types/score';
 import { useKeyboardShortcuts, EntryState } from './hooks/useKeyboardShortcuts';
 import { ScorePlaybackScheduler } from './engine/audio/playback';
 import { getMeasureIndexAtCursor } from './engine/layout/measureUtils';
@@ -34,6 +34,7 @@ export default function App() {
     accidental: undefined,
     dots: 0,
     pitchOffset: 0,
+    staccato: false,
   });
 
 
@@ -202,10 +203,10 @@ export default function App() {
           activeElement={activeElement}
           dispatch={dispatch}
           autoBeaming={state.present.info.autoBeaming === true}
-          onInsertBar={() =>
+          onInsertBar={(barType: BarType = 'single') =>
             dispatch({
               type: 'INSERT_ELEMENT',
-              element: { id: `bar-${Date.now()}`, type: 'bar', barType: 'single' },
+              element: { id: `bar-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type: 'bar', barType },
             })
           }
           onToggleAttribute={(attribute) =>

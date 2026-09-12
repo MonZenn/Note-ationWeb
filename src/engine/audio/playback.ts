@@ -1,5 +1,6 @@
-import { Score, MusicElement, FlowMarkType, InstrumentType, DynamicMark, NoteElement, TempoElement } from '../../types/score';
+import { Score, MusicElement, FlowMarkType, InstrumentType, DynamicMark, NoteElement, TempoElement, TextElement } from '../../types/score';
 import { diatonicOffsetToMidi } from '../../utils/pitchUtils';
+import { parseChordToMidi } from '../../utils/chordUtils';
 import { playTone } from './synth';
 
 export const DYNAMIC_GAINS: Record<DynamicMark, number> = {
@@ -25,8 +26,11 @@ export interface PlaybackEvent {
   volume?: number;
   isSlurred?: boolean;
   isSlurContinuation?: boolean;
+  isTiedContinuation?: boolean;
   isTrill?: boolean;
   measureIndex?: number;
+  prevMidiPitches?: number[];
+  isChordSymbol?: boolean;
 }
 
 export function computeQuarterDurationSec(tempo: TempoElement): number {
@@ -396,12 +400,16 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
       midiPitches: number[];
       startTimeSec: number;
       durationSec: number;
+      nominalDurationSec: number;
       isSlurred: boolean;
       isSlurContinuation: boolean;
+      isTiedContinuation?: boolean;
       dynamicGain: number;
       measureIndex: number;
+      prevMidiPitches?: number[];
     }
     const staffNotes: StaffNoteItem[] = [];
+    let lastStaffNoteMidiPitches: number[] | null = null;
 
     sequence.forEach((measureIndex, seqIdx) => {
       const measure = measures[measureIndex];
@@ -410,6 +418,15 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
       let currentMeasureQuarterSec = sequenceStepInitialQuarterSec[seqIdx] ?? initialQuarterDurationSec;
       let measureBeatOffset = 0;
       const mChanges = measureTempoChanges[measureIndex] || [];
+
+      interface StaffChordItem {
+        elementIndex: number;
+        chordElem: TextElement;
+        startTimeSec: number;
+        dynamicGain: number;
+        measureIndex: number;
+      }
+      const measureChords: StaffChordItem[] = [];
 
       measure.elements.forEach(({ element, elementIndex }) => {
         const applicableChanges = mChanges.filter((c) => c.beatOffset <= measureBeatOffset + 0.001);
@@ -425,6 +442,14 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
           currentMeasureQuarterSec = computeQuarterDurationSec(element);
         } else if (element.type === 'dynamic') {
           currentDynamicGain = DYNAMIC_GAINS[element.mark] ?? 0.72;
+        } else if (element.type === 'text' && element.category === 'chord') {
+          measureChords.push({
+            elementIndex,
+            chordElem: element,
+            startTimeSec: currentTimeSec,
+            dynamicGain: currentDynamicGain,
+            measureIndex,
+          });
         } else if (element.type === 'note') {
           const beatFraction = 4 / element.duration;
           let durationSec = beatFraction * currentMeasureQuarterSec;
@@ -455,6 +480,9 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
           );
 
           const isSlurContinuation = activeSlurTargetId !== null;
+          const prevMidiPitches = isSlurContinuation && lastStaffNoteMidiPitches ? [...lastStaffNoteMidiPitches] : undefined;
+          lastStaffNoteMidiPitches = midiPitches;
+
           if (activeSlurTargetId && element.id === activeSlurTargetId) {
             activeSlurTargetId = null;
           }
@@ -473,10 +501,12 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
             midiPitches,
             startTimeSec: currentTimeSec,
             durationSec,
+            nominalDurationSec,
             isSlurred,
             isSlurContinuation,
             dynamicGain: currentDynamicGain,
             measureIndex,
+            prevMidiPitches,
           });
 
           if (element.fermata) {
@@ -502,7 +532,73 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
           activeSlurTargetId = null;
         }
       });
+
+      const measureEndTimeSec = currentTimeSec;
+      for (let cIdx = 0; cIdx < measureChords.length; cIdx++) {
+        const chordItem = measureChords[cIdx];
+        let chordDurationSec: number;
+        if (cIdx + 1 < measureChords.length) {
+          chordDurationSec = measureChords[cIdx + 1].startTimeSec - chordItem.startTimeSec;
+        } else {
+          chordDurationSec = measureEndTimeSec - chordItem.startTimeSec;
+        }
+        if (chordDurationSec <= 0) {
+          chordDurationSec = Math.max(0.5, currentMeasureQuarterSec * 4);
+        }
+
+        const midiPitches = parseChordToMidi(chordItem.chordElem.text);
+        if (midiPitches.length > 0) {
+          events.push({
+            staffIndex,
+            elementIndex: chordItem.elementIndex,
+            midiPitches,
+            startTimeSec: chordItem.startTimeSec,
+            durationSec: chordDurationSec,
+            instrument: 'piano',
+            volume: chordItem.dynamicGain * 0.65 * (staff.volume ?? 1.0),
+            isChordSymbol: true,
+            measureIndex: chordItem.measureIndex,
+          });
+        }
+      }
     });
+
+    // Resolve ties across staffNotes: accumulate duration into the head and mark continuation
+    for (let i = 0; i < staffNotes.length; i++) {
+      const head = staffNotes[i];
+      if (head.isTiedContinuation || !head.noteElem.tieOut) continue;
+
+      let lastInChain = head;
+
+      for (let j = i + 1; j < staffNotes.length; j++) {
+        const candidate = staffNotes[j];
+        if (candidate.isTiedContinuation) continue;
+
+        const expectedStart = lastInChain.startTimeSec + lastInChain.nominalDurationSec;
+        if (Math.abs(candidate.startTimeSec - expectedStart) > 0.005) {
+          // Gap or rest between notes terminates tie
+          break;
+        }
+
+        const pitchesMatch =
+          head.midiPitches.length > 0 &&
+          head.midiPitches.length === candidate.midiPitches.length &&
+          head.midiPitches.every((p, pIdx) => p === candidate.midiPitches[pIdx]);
+
+        if (!pitchesMatch) {
+          break;
+        }
+
+        head.durationSec += candidate.durationSec;
+        candidate.isTiedContinuation = true;
+
+        if (candidate.noteElem.tieOut) {
+          lastInChain = candidate;
+        } else {
+          break;
+        }
+      }
+    }
 
     // Interpolate dynamic gains for notes within hairpins
     const resolvedGains = staffNotes.map((n) => n.dynamicGain);
@@ -512,10 +608,10 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
         const k = staffNotes.findIndex((n, idx) => idx >= i && n.noteElem.id === hp.targetNoteId);
         if (k >= i) {
           const dStart = resolvedGains[i];
-          const dEnd =
-            hp.type === 'crescendo'
-              ? Math.min(1.0, dStart + 0.35)
-              : Math.max(0.20, dStart - 0.35);
+          const isCresc = hp.type === 'crescendo' || hp.type === 'cresc';
+          const dEnd = isCresc
+            ? Math.min(1.0, dStart + 0.35)
+            : Math.max(0.20, dStart - 0.35);
 
           const tStart = staffNotes[i].startTimeSec;
           const tEnd = staffNotes[k].startTimeSec;
@@ -546,13 +642,23 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
         volume: vol,
         isSlurred: sn.isSlurred,
         isSlurContinuation: sn.isSlurContinuation,
+        isTiedContinuation: sn.isTiedContinuation,
         ...(sn.noteElem.ornament === 'trill' ? { isTrill: true } : {}),
         measureIndex: sn.measureIndex,
+        prevMidiPitches: sn.prevMidiPitches,
       });
     });
   });
 
-  return events.sort((a, b) => a.startTimeSec - b.startTimeSec);
+  return events.sort((a, b) => {
+    if (Math.abs(a.startTimeSec - b.startTimeSec) > 0.0001) {
+      return a.startTimeSec - b.startTimeSec;
+    }
+    // Chord events sort first so that melodic note ticks take visual precedence
+    if (a.isChordSymbol && !b.isChordSymbol) return -1;
+    if (!a.isChordSymbol && b.isChordSymbol) return 1;
+    return 0;
+  });
 }
 
 export interface PlaybackOptions {
@@ -623,17 +729,19 @@ export class ScorePlaybackScheduler {
       const delayMs = Math.max(0, (evt.startTimeSec - startTimeOffsetSec) * 1000);
       const timeout = setTimeout(() => {
         if (!this.isRunning) return;
-        evt.midiPitches.forEach(pitch =>
-          playTone(
-            pitch,
-            evt.durationSec,
-            evt.instrument,
-            evt.volume,
-            evt.isSlurred ?? false,
-            evt.isSlurContinuation ?? false,
-            Boolean(evt.isTrill)
-          )
-        );
+        if (!evt.isTiedContinuation) {
+          evt.midiPitches.forEach(pitch =>
+            playTone(
+              pitch,
+              evt.durationSec,
+              evt.instrument,
+              evt.volume,
+              evt.isSlurred ?? false,
+              evt.isSlurContinuation ?? false,
+              Boolean(evt.isTrill)
+            )
+          );
+        }
         onTick?.(evt.staffIndex, evt.elementIndex);
       }, delayMs);
       this.activeTimeouts.push(timeout);

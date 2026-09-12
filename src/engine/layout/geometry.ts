@@ -7,6 +7,8 @@ import {
   PageSetupConfig,
   ScoreFontsConfig,
   FontSetting,
+  DurationValue,
+  TiePair,
 } from '../../types/score';
 
 export const KEY_SIGNATURE_OFFSETS: Record<ClefType, { sharps: number[]; flats: number[] }> = {
@@ -279,13 +281,254 @@ export interface SlurGeometry {
   apexY: number;
 }
 
+export function computeSlurEndpoint(
+  note: NoteElement,
+  elemPos: { element: MusicElement; x: number; width?: number },
+  isStart: boolean,
+  effectiveDir: 'above' | 'below',
+  centerY: number,
+  scale: number = 1.0,
+  voice?: 'voice-1' | 'voice-2',
+  beamedGroups?: BeamedGroupGeometry[]
+): { x: number; y: number } {
+  const stemDir = getEffectiveStemDirection(note, voice);
+  const isWhole = note.duration === 1;
+  const offsets = note.pitches && note.pitches.length > 0
+    ? note.pitches.map((p) => p.diatonicOffset)
+    : [0];
+  const topPitchY = calculatePitchY(centerY, Math.max(...offsets), scale);
+  const bottomPitchY = calculatePitchY(centerY, Math.min(...offsets), scale);
+
+  // If whole note (or no pitches), always anchor at notehead center
+  if (isWhole || !note.pitches || note.pitches.length === 0) {
+    const x = Number((elemPos.x + 7 * scale).toFixed(2));
+    const y = effectiveDir === 'above'
+      ? Number((topPitchY - 4.5 * scale).toFixed(2))
+      : Number((bottomPitchY + 4.5 * scale).toFixed(2));
+    return { x, y };
+  }
+
+  // Determine stemTipY and whether note is in a beamed group
+  const stemLen = (voice === 'voice-2' ? 28 : 32) * scale;
+  let stemTipY = stemDir === 'up'
+    ? topPitchY - stemLen
+    : bottomPitchY + stemLen;
+  let beamedItem: { stemTipY: number; beamY: number } | undefined;
+
+  if (beamedGroups) {
+    for (const bg of beamedGroups) {
+      const match = bg.notes.find((n) => n.note.id === note.id);
+      if (match) {
+        beamedItem = match;
+        stemTipY = match.stemTipY;
+        break;
+      }
+    }
+  }
+
+  let x: number;
+  let y: number;
+
+  if (effectiveDir === 'above') {
+    if (stemDir === 'up') {
+      // Anchor at stem tip (start gets 12.5, end gets 12.0)
+      const xOffset = isStart ? 12.5 : 12.0;
+      x = elemPos.x + xOffset * scale;
+      y = stemTipY - 3 * scale;
+      if (beamedItem) {
+        y = Math.min(y, beamedItem.beamY - 6 * scale);
+      }
+    } else {
+      // Stem down: anchor above notehead
+      x = elemPos.x + 7 * scale;
+      y = topPitchY - 4.5 * scale;
+    }
+  } else {
+    // effectiveDir === 'below'
+    if (stemDir === 'down') {
+      // Anchor at stem tip (start gets 1.5, end gets 2.0)
+      const xOffset = isStart ? 1.5 : 2.0;
+      x = elemPos.x + xOffset * scale;
+      y = stemTipY + 3 * scale;
+      if (beamedItem) {
+        y = Math.max(y, beamedItem.beamY + 6 * scale);
+      }
+    } else {
+      // Stem up: anchor below notehead
+      x = elemPos.x + 7 * scale;
+      y = bottomPitchY + 4.5 * scale;
+    }
+  }
+
+  return {
+    x: Number(x.toFixed(2)),
+    y: Number(y.toFixed(2)),
+  };
+}
+
+export interface TieGeometry {
+  path: string;
+  direction: 'above' | 'below';
+  type: 'full' | 'outgoing' | 'incoming';
+  isCrossMeasure: boolean;
+}
+
+export function resolveStaffTies(elements: MusicElement[]): TiePair[] {
+  const ties: TiePair[] = [];
+  for (let i = 0; i < elements.length; i++) {
+    const elem = elements[i];
+    if (elem.type !== 'note' || !elem.tieOut) continue;
+
+    const sourceNote = elem;
+    let isCrossMeasure = false;
+    let targetNote: NoteElement | null = null;
+
+    for (let j = i + 1; j < elements.length; j++) {
+      const next = elements[j];
+      if (next.type === 'bar') {
+        isCrossMeasure = true;
+        continue;
+      }
+      if (next.type === 'rest') {
+        // Ties cannot bridge rests
+        break;
+      }
+      if (next.type === 'note') {
+        targetNote = next;
+        break;
+      }
+      // Skip clefs, keys, time signatures, dynamics, tempo, annotations, etc.
+    }
+
+    if (!targetNote) continue;
+
+    for (const p1 of sourceNote.pitches) {
+      const match = targetNote.pitches.find(
+        (p2) => p2.diatonicOffset === p1.diatonicOffset && (p2.accidental ?? null) === (p1.accidental ?? null)
+      );
+      if (match) {
+        ties.push({
+          sourceNote,
+          targetNote,
+          pitchOffset: p1.diatonicOffset,
+          isCrossMeasure,
+        });
+      }
+    }
+  }
+  return ties;
+}
+
+export function computeTieGeometry(
+  tie: TiePair,
+  positionedElements: { element: MusicElement; x: number; width?: number }[],
+  centerY: number,
+  scale: number = 1.0,
+  options?: { systemWidth?: number; systemStartX?: number; voice?: 'voice-1' | 'voice-2' }
+): TieGeometry | null {
+  const sourcePos = positionedElements.find((p) => p.element.id === tie.sourceNote.id);
+  const targetPos = positionedElements.find((p) => p.element.id === tie.targetNote.id);
+
+  if (!sourcePos && !targetPos) {
+    return null;
+  }
+
+  const noteY = calculatePitchY(centerY, tie.pitchOffset, scale);
+
+  // Determine curvature direction: opposite to stem direction
+  const sourceStem = getEffectiveStemDirection(tie.sourceNote, options?.voice);
+  let direction: 'above' | 'below' = sourceStem === 'up' ? 'below' : 'above';
+
+  if (tie.sourceNote.pitches.length > 1) {
+    const offsets = tie.sourceNote.pitches.map((p) => p.diatonicOffset);
+    const minOffset = Math.min(...offsets);
+    const maxOffset = Math.max(...offsets);
+    if (tie.pitchOffset === minOffset) {
+      direction = 'below';
+    } else if (tie.pitchOffset === maxOffset) {
+      direction = 'above';
+    }
+  }
+
+  const clearance = 3.5 * scale;
+  const bowDepth = 6 * scale;
+
+  if (sourcePos && targetPos) {
+    // Full tie within the same system
+    const x1 = sourcePos.x + 13 * scale;
+    const x2 = Math.max(x1 + 8 * scale, targetPos.x + 3 * scale);
+    const y1 = direction === 'below' ? noteY + clearance : noteY - clearance;
+    const y2 = y1;
+    const cy = direction === 'below' ? y1 + bowDepth : y1 - bowDepth;
+
+    const dx = x2 - x1;
+    const c1x = x1 + dx * 0.28;
+    const c2x = x2 - dx * 0.28;
+
+    const path = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${c1x.toFixed(1)} ${cy.toFixed(1)}, ${c2x.toFixed(1)} ${cy.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+    return {
+      path,
+      direction,
+      type: 'full',
+      isCrossMeasure: tie.isCrossMeasure,
+    };
+  }
+
+  if (sourcePos && !targetPos) {
+    // Outgoing tie stub
+    const x1 = sourcePos.x + 13 * scale;
+    const rightLimit = options?.systemWidth ?? (sourcePos.x + 40 * scale);
+    const x2 = Math.min(rightLimit, sourcePos.x + (sourcePos.width ?? 36) + 16 * scale);
+    const y1 = direction === 'below' ? noteY + clearance : noteY - clearance;
+    const y2 = y1;
+    const cy = direction === 'below' ? y1 + bowDepth * 0.8 : y1 - bowDepth * 0.8;
+
+    const dx = Math.max(8 * scale, x2 - x1);
+    const c1x = x1 + dx * 0.35;
+    const c2x = x2;
+
+    const path = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${c1x.toFixed(1)} ${cy.toFixed(1)}, ${c2x.toFixed(1)} ${cy.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+    return {
+      path,
+      direction,
+      type: 'outgoing',
+      isCrossMeasure: true,
+    };
+  }
+
+  if (!sourcePos && targetPos) {
+    // Incoming tie stub
+    const x2 = targetPos.x + 3 * scale;
+    const leftLimit = options?.systemStartX ?? Math.max(0, targetPos.x - 24 * scale);
+    const x1 = Math.max(leftLimit, targetPos.x - 20 * scale);
+    const y2 = direction === 'below' ? noteY + clearance : noteY - clearance;
+    const y1 = y2;
+    const cy = direction === 'below' ? y2 + bowDepth * 0.8 : y2 - bowDepth * 0.8;
+
+    const dx = Math.max(8 * scale, x2 - x1);
+    const c1x = x1;
+    const c2x = x1 + dx * 0.65;
+
+    const path = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${c1x.toFixed(1)} ${cy.toFixed(1)}, ${c2x.toFixed(1)} ${cy.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+    return {
+      path,
+      direction,
+      type: 'incoming',
+      isCrossMeasure: true,
+    };
+  }
+
+  return null;
+}
+
 export function computeSlurGeometry(
   startNote: NoteElement,
   endNote: NoteElement,
   elementsWithPositions: { element: MusicElement; x: number; width?: number }[],
   centerY: number,
   scale: number = 1.0,
-  voice?: 'voice-1' | 'voice-2'
+  voice?: 'voice-1' | 'voice-2',
+  beamedGroups?: BeamedGroupGeometry[]
 ): SlurGeometry | null {
   const startIdx = elementsWithPositions.findIndex((e) => e.element.id === startNote.id);
   const endIdx = elementsWithPositions.findIndex((e) => e.element.id === endNote.id);
@@ -309,27 +552,57 @@ export function computeSlurGeometry(
     const notesInSpan = span
       .map((s) => s.element)
       .filter((e): e is NoteElement => e.type === 'note');
-    const stemsUpCount = notesInSpan.filter((n) => getEffectiveStemDirection(n, voice) === 'up').length;
-    const stemsDownCount = notesInSpan.length - stemsUpCount;
-    if (stemsUpCount > stemsDownCount) {
+    const allStemsUp = notesInSpan.length > 0 && notesInSpan.every((n) => getEffectiveStemDirection(n, voice) === 'up');
+    if (allStemsUp) {
       effectiveDir = 'below';
-    } else if (stemsDownCount > stemsUpCount) {
-      effectiveDir = 'above';
     } else {
-      let totalOffset = 0;
-      let pitchCount = 0;
-      for (const n of notesInSpan) {
-        if (n.pitches) {
-          for (const p of n.pitches) {
-            totalOffset += p.diatonicOffset;
-            pitchCount++;
-          }
-        }
-      }
-      const avgOffset = pitchCount > 0 ? totalOffset / pitchCount : 0;
-      effectiveDir = avgOffset < 0 ? 'below' : 'above';
+      // All stems down or mixed stems default to 'above' per Gould / Read engraving rules
+      effectiveDir = 'above';
     }
   }
+
+  if (!beamedGroups) {
+    const elements = elementsWithPositions.map((e) => e.element);
+    const activeTimeSig = elements.find((e): e is TimeSignatureElement => e.type === 'time');
+    beamedGroups = computeStaffBeams(
+      elementsWithPositions,
+      centerY,
+      activeTimeSig,
+      scale,
+      voice,
+      true
+    );
+  }
+
+  const startAnchor = computeSlurEndpoint(
+    startNote,
+    startElemPos,
+    true,
+    effectiveDir,
+    centerY,
+    scale,
+    voice,
+    beamedGroups
+  );
+  const endAnchor = computeSlurEndpoint(
+    endNote,
+    endElemPos,
+    false,
+    effectiveDir,
+    centerY,
+    scale,
+    voice,
+    beamedGroups
+  );
+
+  const startAnchorX = startAnchor.x;
+  const startAnchorY = startAnchor.y;
+  const endAnchorX = endAnchor.x;
+  const endAnchorY = endAnchor.y;
+
+  let apexY: number;
+  const dx = endAnchorX - startAnchorX;
+  const naturalBow = Math.max(12, Math.min(28, dx * 0.15));
 
   const getNotePitchBounds = (note: NoteElement) => {
     if (!note.pitches || note.pitches.length === 0) {
@@ -342,57 +615,79 @@ export function computeSlurGeometry(
     };
   };
 
-  const startBounds = getNotePitchBounds(startNote);
-  const endBounds = getNotePitchBounds(endNote);
+  const stemLen = (voice === 'voice-2' ? 28 : 32) * scale;
 
-  let startAnchorX: number;
-  let startAnchorY: number;
-  let endAnchorX: number;
-  let endAnchorY: number;
-
-  if (effectiveDir === 'below') {
-    startAnchorX = Number((startElemPos.x + 7 * scale).toFixed(2));
-    startAnchorY = Number((startBounds.bottomY + 4.5 * scale).toFixed(2));
-    endAnchorX = Number((endElemPos.x + 7 * scale).toFixed(2));
-    endAnchorY = Number((endBounds.bottomY + 4.5 * scale).toFixed(2));
-  } else {
-    // Curving above
-    startAnchorX = Number((startElemPos.x + 7 * scale).toFixed(2));
-    startAnchorY = Number((startBounds.topY - 4.5 * scale).toFixed(2));
-    endAnchorX = Number((endElemPos.x + 7 * scale).toFixed(2));
-    endAnchorY = Number((endBounds.topY - 4.5 * scale).toFixed(2));
-  }
-
-  let apexY: number;
-  const dx = endAnchorX - startAnchorX;
-  const naturalBow = Math.max(12, Math.min(28, dx * 0.15));
+  const hasTieInSpan = span.some(
+    (item) => item.element.type === 'note' && (item.element as NoteElement).tieOut
+  );
+  const tiePadding = hasTieInSpan ? 18 * scale : 12 * scale;
 
   if (effectiveDir === 'below') {
     let maxY = Math.max(startAnchorY, endAnchorY);
     for (const item of span) {
       if (item.element.type === 'note') {
-        const bounds = getNotePitchBounds(item.element);
-        if (getEffectiveStemDirection(item.element, voice) === 'down') {
-          maxY = Math.max(maxY, bounds.bottomY + 32 * scale);
-        } else {
-          maxY = Math.max(maxY, bounds.bottomY);
+        const note = item.element;
+        const bounds = getNotePitchBounds(note);
+        const stemDir = getEffectiveStemDirection(note, voice);
+        let noteBottom = bounds.bottomY;
+
+        if (note.pitches && note.pitches.length > 0) {
+          const minOffset = Math.min(...note.pitches.map((p) => p.diatonicOffset));
+          if (minOffset < -4) {
+            noteBottom = Math.max(noteBottom, calculatePitchY(centerY, minOffset, scale) + 2 * scale);
+          }
         }
+
+        if (note.duration !== 1 && stemDir === 'down') {
+          let tipY = bounds.bottomY + stemLen;
+          if (beamedGroups) {
+            for (const bg of beamedGroups) {
+              const match = bg.notes.find((n) => n.note.id === note.id);
+              if (match) {
+                tipY = Math.max(match.stemTipY, match.beamY);
+                break;
+              }
+            }
+          }
+          noteBottom = Math.max(noteBottom, tipY);
+        }
+        maxY = Math.max(maxY, noteBottom);
       }
     }
-    apexY = Math.max(maxY + 12 * scale, Math.max(startAnchorY, endAnchorY) + naturalBow);
+    apexY = Number(Math.max(maxY + tiePadding, Math.max(startAnchorY, endAnchorY) + naturalBow).toFixed(2));
   } else {
     let minY = Math.min(startAnchorY, endAnchorY);
     for (const item of span) {
       if (item.element.type === 'note') {
-        const bounds = getNotePitchBounds(item.element);
-        if (getEffectiveStemDirection(item.element, voice) === 'up') {
-          minY = Math.min(minY, bounds.topY - 32 * scale);
-        } else {
-          minY = Math.min(minY, bounds.topY);
+        const note = item.element;
+        const bounds = getNotePitchBounds(note);
+        const stemDir = getEffectiveStemDirection(note, voice);
+        let noteTop = bounds.topY;
+
+        if (note.pitches && note.pitches.length > 0) {
+          const maxOffset = Math.max(...note.pitches.map((p) => p.diatonicOffset));
+          if (maxOffset > 4) {
+            noteTop = Math.min(noteTop, calculatePitchY(centerY, maxOffset, scale) - 2 * scale);
+          }
         }
+
+        if (note.duration !== 1 && stemDir === 'up') {
+          let tipY = bounds.topY - stemLen;
+          if (beamedGroups) {
+            for (const bg of beamedGroups) {
+              const match = bg.notes.find((n) => n.note.id === note.id);
+              if (match) {
+                tipY = Math.min(match.stemTipY, match.beamY);
+                break;
+              }
+            }
+          }
+          noteTop = Math.min(noteTop, tipY);
+        }
+        minY = Math.min(minY, noteTop);
       }
     }
-    apexY = Math.min(minY - 12 * scale, Math.min(startAnchorY, endAnchorY) - naturalBow);
+    apexY = Number(Math.min(minY - tiePadding, Math.min(startAnchorY, endAnchorY) - naturalBow).toFixed(2));
   }
 
   const cp1X = Number((startAnchorX + dx * 0.32).toFixed(2));
@@ -416,9 +711,20 @@ export interface BeamedGroup {
   stemDirection: 'up' | 'down';
 }
 
+export function getNoteStemLength(
+  duration: DurationValue,
+  voice?: 'voice-1' | 'voice-2',
+  scale: number = 1.0
+): number {
+  const baseLen = voice === 'voice-2' ? 28 : 32;
+  const flagCount = duration >= 8 ? Math.round(Math.log2(duration)) - 2 : 0;
+  const extraLen = flagCount > 3 ? (flagCount - 3) * 5 : 0;
+  return (baseLen + extraLen) * scale;
+}
+
 export interface BeamPolygon {
   points: string;
-  type: 'primary' | 'secondary' | 'tertiary';
+  type: 'primary' | 'secondary' | 'tertiary' | 'quaternary' | 'quinary' | 'senary';
   isStub?: boolean;
 }
 
@@ -704,7 +1010,7 @@ export function computeStaffBeams(
       const topPitchY = calculatePitchY(centerY, Math.max(...offsets), scale);
       const bottomPitchY = calculatePitchY(centerY, Math.min(...offsets), scale);
 
-      const stemLen = (voice === 'voice-2' ? 28 : 32) * scale;
+      const stemLen = getNoteStemLength(note.duration, voice, scale);
       const minDownTipY = centerY + (voice === 'voice-2' ? 16 : 8) * scale;
       const maxUpTipY = centerY - (voice === 'voice-2' ? 16 : 8) * scale;
 
@@ -734,14 +1040,24 @@ export function computeStaffBeams(
     const lineY = (x: number) => first.defaultTipY + clampedSlope * (x - first.stemX);
 
     // Clearance adjustment: intermediate stems must not be truncated below minimum length
-    let deltaY = 0;
-    if (group.stemDirection === 'up') {
-      deltaY = Math.min(0, ...groupNotesData.map((d) => d.defaultTipY - lineY(d.stemX)));
-    } else {
-      deltaY = Math.max(0, ...groupNotesData.map((d) => d.defaultTipY - lineY(d.stemX)));
+    let minGroupStemLen = Infinity;
+    for (let i = 0; i < groupNotesData.length; i++) {
+      const d = groupNotesData[i];
+      const yBeam = lineY(d.stemX);
+      const actualStemLen = group.stemDirection === 'up'
+        ? d.noteheadY - yBeam
+        : yBeam - d.noteheadY;
+      if (actualStemLen < minGroupStemLen) {
+        minGroupStemLen = actualStemLen;
+      }
     }
 
-    const beamYAt = (x: number) => Number((lineY(x) + deltaY).toFixed(2));
+    const minRequiredStemLen = (voice === 'voice-2' ? 20 : 24) * scale;
+    const clearanceShift = minGroupStemLen < minRequiredStemLen
+      ? (minRequiredStemLen - minGroupStemLen) * (group.stemDirection === 'up' ? -1 : 1)
+      : 0;
+
+    const beamYAt = (x: number) => Number((lineY(x) + clearanceShift).toFixed(2));
 
     const notesWithBeam = groupNotesData.map((d) => ({
       note: d.note,
@@ -767,48 +1083,38 @@ export function computeStaffBeams(
     const p1Points = `${x0},${y0} ${xN},${yN} ${xN},${Number((yN + dirSign * beamThickness).toFixed(2))} ${x0},${Number((y0 + dirSign * beamThickness).toFixed(2))}`;
     polygons.push({ type: 'primary', points: p1Points });
 
-    // 2. Secondary Beams (for duration >= 16: 16th and 32nd notes)
-    const secOffset = dirSign * step;
-    let secRunStart: number | null = null;
+    // Multi-level beams: secondary (16th), tertiary (32nd), quaternary (64th), quinary (128th), senary (256th)
+    const beamLevels: { minDuration: DurationValue; type: BeamPolygon['type']; multiplier: number }[] = [
+      { minDuration: 16, type: 'secondary', multiplier: 1 },
+      { minDuration: 32, type: 'tertiary', multiplier: 2 },
+      { minDuration: 64, type: 'quaternary', multiplier: 3 },
+      { minDuration: 128, type: 'quinary', multiplier: 4 },
+      { minDuration: 256, type: 'senary', multiplier: 5 },
+    ];
 
-    for (let i = 0; i < notesWithBeam.length; i++) {
-      const is16 = notesWithBeam[i].note.duration >= 16;
-      if (is16) {
-        if (secRunStart === null) secRunStart = i;
-      } else {
-        if (secRunStart !== null) {
-          addSecondaryOrTertiarySpan(secRunStart, i - 1, 'secondary', secOffset);
-          secRunStart = null;
+    for (const level of beamLevels) {
+      const offset = dirSign * (step * level.multiplier);
+      let runStart: number | null = null;
+      for (let i = 0; i < notesWithBeam.length; i++) {
+        const matches = notesWithBeam[i].note.duration >= level.minDuration;
+        if (matches) {
+          if (runStart === null) runStart = i;
+        } else {
+          if (runStart !== null) {
+            addSpan(runStart, i - 1, level.type, offset);
+            runStart = null;
+          }
         }
       }
-    }
-    if (secRunStart !== null) {
-      addSecondaryOrTertiarySpan(secRunStart, notesWithBeam.length - 1, 'secondary', secOffset);
-    }
-
-    // 3. Tertiary Beams (for duration >= 32)
-    const tertOffset = dirSign * (step * 2);
-    let tertRunStart: number | null = null;
-
-    for (let i = 0; i < notesWithBeam.length; i++) {
-      const is32 = notesWithBeam[i].note.duration >= 32;
-      if (is32) {
-        if (tertRunStart === null) tertRunStart = i;
-      } else {
-        if (tertRunStart !== null) {
-          addSecondaryOrTertiarySpan(tertRunStart, i - 1, 'tertiary', tertOffset);
-          tertRunStart = null;
-        }
+      if (runStart !== null) {
+        addSpan(runStart, notesWithBeam.length - 1, level.type, offset);
       }
     }
-    if (tertRunStart !== null) {
-      addSecondaryOrTertiarySpan(tertRunStart, notesWithBeam.length - 1, 'tertiary', tertOffset);
-    }
 
-    function addSecondaryOrTertiarySpan(
+    function addSpan(
       startIdx: number,
       endIdx: number,
-      type: 'secondary' | 'tertiary',
+      type: BeamPolygon['type'],
       offsetY: number
     ) {
       if (startIdx < endIdx) {
