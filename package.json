@@ -5,7 +5,7 @@
   "description": "Note-ation: Modern, open-source, 100% client-side music notation editor",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MonZenn/Note-ation.git"
+    "url": "https://github.com/MonZenn/Note-ationWeb.git"
   },
   "type": "module",
   "scripts": {

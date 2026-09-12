@@ -1,10 +1,10 @@
 # 🎵 Note-ation
 ### Free, Modern Web Application for Music Notation
 
-[![Live Demo](https://img.shields.io/badge/Live_App-monzenn.github.io%2FNote--ation-22c55e?style=for-the-badge&logo=githubpages&logoColor=white)](https://monzenn.github.io/Note-ation/)
+[![Live Demo](https://img.shields.io/badge/Live_App-monzenn.github.io%2FNote--ationWeb-22c55e?style=for-the-badge&logo=githubpages&logoColor=white)](https://monzenn.github.io/Note-ationWeb/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-> 🌐 **Live Website:** [https://monzenn.github.io/Note-ation/](https://monzenn.github.io/Note-ation/)
+> 🌐 **Live Website:** [https://monzenn.github.io/Note-ationWeb/](https://monzenn.github.io/Note-ationWeb/)
 
 **Note-ation** is an open-source, 100% client-side web application designed for fast, intuitive, and professional music notation editing directly in your web browser. It combines a rapid keyboard-driven workflow and horizontal ribbon canvas with an advanced vector sheet view, dynamic typography, realistic multi-instrument Web Audio synthesis, automatic chord realization, and multi-page print/PDF export.
 
@@ -16,7 +16,7 @@
 
 - **100% Free & Open Source:** Free to use, modify, and distribute under the permissive MIT License.
 - **Zero Backend / Complete Privacy:** Operates entirely inside your browser using client-side JavaScript/TypeScript and standard Web APIs. No accounts, no servers, no databases, and zero tracking or telemetry. Your music files remain 100% private on your local device.
-- **Instant In-Browser Access:** Launch [monzenn.github.io/Note-ation](https://monzenn.github.io/Note-ation/) to start composing immediately without installing software or registering an account.
+- **Instant In-Browser Access:** Launch [monzenn.github.io/Note-ationWeb](https://monzenn.github.io/Note-ationWeb/) to start composing immediately without installing software or registering an account.
 - **Dual Visual Workflows:**
   - **Continuous Ribbon View:** A smooth, horizontally scrolling multi-staff canvas optimized for rapid note entry, auditioning, and real-time editing.
   - **Paginated Page View:** A print-ready multi-page layout engine with automatic measure packing, system justification, dynamic headers, system brackets/braces, measure numbers, and vector PDF export.
@@ -140,7 +140,7 @@ Note-ation is built from the ground up for lightning-fast keyboard-driven compos
 
 ### 🌐 Direct Browser Access
 Note-ation runs 100% in your browser without requiring any software installation:
-👉 **[Open Note-ation](https://monzenn.github.io/Note-ation/)**
+👉 **[Open Note-ation](https://monzenn.github.io/Note-ationWeb/)**
 
 ### 🛠️ Local Development Setup
 
@@ -151,8 +151,8 @@ Note-ation runs 100% in your browser without requiring any software installation
 #### Installation & Development
 ```bash
 # Clone repository
-git clone https://github.com/MonZenn/Note-ation.git
-cd Note-ation
+git clone https://github.com/MonZenn/Note-ationWeb.git
+cd Note-ationWeb
 
 # Install dependencies
 npm install
