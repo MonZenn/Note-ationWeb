@@ -116,3 +116,28 @@ export function getStaffContextAt(
   return { clef, keyAccidentalsCount, instrument };
 }
 
+export function getOttavaShiftAt(staff: Staff | undefined, index: number): number {
+  if (!staff || !staff.elements) return 0;
+  let activeShift = 0;
+  let activeTargetId: string | null = null;
+  const limit = Math.min(index, staff.elements.length);
+
+  for (let i = 0; i < limit; i++) {
+    const el = staff.elements[i];
+    if (el?.type === 'note') {
+      if (activeTargetId && el.id === activeTargetId) {
+        activeTargetId = null;
+        activeShift = 0;
+      }
+      if (el.ottava && el.ottava.targetNoteId) {
+        activeTargetId = el.ottava.targetNoteId;
+        if (el.ottava.type === '8va') activeShift = 12;
+        else if (el.ottava.type === '8vb') activeShift = -12;
+        else if (el.ottava.type === '15ma') activeShift = 24;
+        else if (el.ottava.type === '15mb') activeShift = -24;
+      }
+    }
+  }
+  return activeShift;
+}
+

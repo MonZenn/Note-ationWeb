@@ -16,6 +16,7 @@ import {
   TextElement,
   TextCategory,
   TextPlacement,
+  GlissandoStyle,
   NoteArticulation,
   NoteOrnament,
   isOrnament,
@@ -23,7 +24,11 @@ import {
   TempoBaseDuration,
   TempoDisplayMode,
   KeySignatureElement,
+  OttavaType,
+  ClefType,
+  LyricPart,
 } from '../types/score';
+import { compileLyricPartsToVerses } from '../utils/lyricUtils';
 
 export interface SelectionRange {
   startIndex: number;
@@ -49,7 +54,7 @@ export type ScoreAction =
   | { type: 'ADD_CHORD_PITCH'; pitch: PitchItem }
   | { type: 'SET_SCORE_INFO'; info: Partial<ScoreInfo> }
   | { type: 'UPDATE_SCORE_INFO'; info: Partial<ScoreInfo> }
-  | { type: 'ADD_STAFF'; name?: string; clef?: 'treble' | 'bass'; instrument?: InstrumentType }
+  | { type: 'ADD_STAFF'; name?: string; clef?: ClefType; instrument?: InstrumentType }
   | { type: 'ADD_SUBSTAFF'; parentStaffId: string }
   | { type: 'REMOVE_STAFF'; staffIndex: number }
   | { type: 'UPDATE_STAFF'; staffIndex: number; updates: Partial<Staff> }
@@ -57,11 +62,16 @@ export type ScoreAction =
   | { type: 'SET_ACTIVE_STAFF'; index: number }
   | { type: 'SET_CURSOR_INDEX'; index: number }
   | { type: 'SET_PITCH_OFFSET'; offset: number }
-  | { type: 'TOGGLE_NOTE_ATTRIBUTE'; attribute: 'tieOut' | 'slurOut' | 'staccato' | 'tenuto' | 'accent' | 'marcato' | 'staccatissimo' | 'fermata' }
+  | { type: 'TOGGLE_NOTE_ATTRIBUTE'; attribute: 'tieOut' | 'slurOut' | 'glissandoOut' | 'staccato' | 'tenuto' | 'accent' | 'marcato' | 'staccatissimo' | 'fermata' }
   | { type: 'TOGGLE_NOTE_EXPRESSION'; expression: NoteArticulation | NoteOrnament }
   | { type: 'TOGGLE_STEM_DIRECTION'; direction?: 'auto' | 'up' | 'down' }
   | { type: 'LOAD_SCORE'; score: Score }
   | { type: 'SET_STAFF_LYRICS'; staffIndex: number; lyrics: string[] }
+  | { type: 'SET_STAFF_VERSES'; staffIndex: number; verses: string[][] }
+  | { type: 'SET_STAFF_VERSE'; staffIndex: number; verseIndex: number; syllables: string[] }
+  | { type: 'ADD_STAFF_VERSE'; staffIndex: number }
+  | { type: 'REMOVE_STAFF_VERSE'; staffIndex: number; verseIndex: number }
+  | { type: 'SET_STAFF_LYRIC_PARTS'; staffIndex: number; parts: LyricPart[] }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'SET_SELECTION_RANGE'; range: SelectionRange | null; anchorIndex?: number }
@@ -73,16 +83,18 @@ export type ScoreAction =
   | { type: 'BATCH_CONVERT_TO_NOTE'; pitchOffset: number }
   | { type: 'BATCH_TRANSPOSE'; delta: number }
   | { type: 'BATCH_DELETE' }
-  | { type: 'BATCH_TOGGLE_ATTRIBUTE'; attribute: 'tieOut' | 'slurOut' | 'staccato' | 'tenuto' | 'accent' | 'marcato' | 'staccatissimo' | 'fermata' }
+  | { type: 'BATCH_TOGGLE_ATTRIBUTE'; attribute: 'tieOut' | 'slurOut' | 'glissandoOut' | 'staccato' | 'tenuto' | 'accent' | 'marcato' | 'staccatissimo' | 'fermata' }
   | { type: 'BATCH_TOGGLE_NOTE_EXPRESSION'; expression: NoteArticulation | NoteOrnament }
   | { type: 'BATCH_CYCLE_STEM_DIRECTION' }
   | { type: 'TOGGLE_SLUR_RANGE'; direction?: SlurDirection }
   | { type: 'CYCLE_SLUR_DIRECTION' }
+  | { type: 'TOGGLE_GLISSANDO_RANGE'; style?: GlissandoStyle; text?: 'gliss.' | 'port.' | 'none' }
   | { type: 'TOGGLE_BEAM' }
   | { type: 'BATCH_TOGGLE_BEAM' }
   | { type: 'BATCH_TOGGLE_TUPLET'; actual?: number; normal?: number }
   | { type: 'TOGGLE_AUTO_BEAMING' }
   | { type: 'TOGGLE_HAIRPIN_RANGE'; hairpinType: HairpinType }
+  | { type: 'TOGGLE_OTTAVA_RANGE'; ottavaType: OttavaType }
   | { type: 'COPY_SELECTION' }
   | { type: 'CUT_SELECTION' }
   | { type: 'PASTE_CLIPBOARD' }
@@ -763,7 +775,78 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const staff = state.present.staves[action.staffIndex];
       if (!staff) return state;
       const newStaves = [...state.present.staves];
-      newStaves[action.staffIndex] = { ...staff, lyrics: action.lyrics };
+      const newVerses = staff.verses && staff.verses.length > 0 ? [...staff.verses] : [[]];
+      newVerses[0] = action.lyrics;
+      newStaves[action.staffIndex] = { ...staff, lyrics: action.lyrics, verses: newVerses };
+      const newScore = { ...state.present, staves: newStaves };
+      return pushHistory(state, newScore);
+    }
+
+    case 'SET_STAFF_VERSES': {
+      const staff = state.present.staves[action.staffIndex];
+      if (!staff) return state;
+      const newStaves = [...state.present.staves];
+      const verses = action.verses;
+      const lyrics = verses.length > 0 ? (verses[0] || []) : [];
+      newStaves[action.staffIndex] = { ...staff, verses, lyrics };
+      const newScore = { ...state.present, staves: newStaves };
+      return pushHistory(state, newScore);
+    }
+
+    case 'SET_STAFF_VERSE': {
+      const staff = state.present.staves[action.staffIndex];
+      if (!staff) return state;
+      const newStaves = [...state.present.staves];
+      const currentVerses = staff.verses ? [...staff.verses.map((v) => [...v])] : (staff.lyrics ? [[...staff.lyrics]] : [[]]);
+      while (currentVerses.length <= action.verseIndex) {
+        currentVerses.push([]);
+      }
+      currentVerses[action.verseIndex] = action.syllables;
+      const lyrics = action.verseIndex === 0 ? action.syllables : (staff.lyrics || currentVerses[0] || []);
+      newStaves[action.staffIndex] = { ...staff, verses: currentVerses, lyrics };
+      const newScore = { ...state.present, staves: newStaves };
+      return pushHistory(state, newScore);
+    }
+
+    case 'ADD_STAFF_VERSE': {
+      const staff = state.present.staves[action.staffIndex];
+      if (!staff) return state;
+      const newStaves = [...state.present.staves];
+      const currentVerses = staff.verses ? [...staff.verses.map((v) => [...v])] : (staff.lyrics ? [[...staff.lyrics]] : [[]]);
+      currentVerses.push([]);
+      const lyrics = staff.lyrics || currentVerses[0] || [];
+      newStaves[action.staffIndex] = { ...staff, verses: currentVerses, lyrics };
+      const newScore = { ...state.present, staves: newStaves };
+      return pushHistory(state, newScore);
+    }
+
+    case 'REMOVE_STAFF_VERSE': {
+      const staff = state.present.staves[action.staffIndex];
+      if (!staff) return state;
+      const newStaves = [...state.present.staves];
+      const currentVerses = staff.verses ? [...staff.verses.map((v) => [...v])] : (staff.lyrics ? [[...staff.lyrics]] : [[]]);
+      if (action.verseIndex >= 0 && action.verseIndex < currentVerses.length) {
+        currentVerses.splice(action.verseIndex, 1);
+      }
+      const finalVerses = currentVerses.length > 0 ? currentVerses : [[]];
+      const lyrics = finalVerses[0] || [];
+      newStaves[action.staffIndex] = { ...staff, verses: finalVerses, lyrics };
+      const newScore = { ...state.present, staves: newStaves };
+      return pushHistory(state, newScore);
+    }
+
+    case 'SET_STAFF_LYRIC_PARTS': {
+      const staff = state.present.staves[action.staffIndex];
+      if (!staff) return state;
+      const newStaves = [...state.present.staves];
+      const verses = compileLyricPartsToVerses(action.parts);
+      const lyrics = verses[0] || [];
+      newStaves[action.staffIndex] = {
+        ...staff,
+        lyricParts: action.parts,
+        verses,
+        lyrics,
+      };
       const newScore = { ...state.present, staves: newStaves };
       return pushHistory(state, newScore);
     }
@@ -1433,6 +1516,100 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       }
     }
 
+    case 'TOGGLE_GLISSANDO_RANGE': {
+      const staff = state.present.staves[state.activeStaffIndex];
+      if (!staff || staff.elements.length === 0) return state;
+
+      // Determine if active selection range with >= 2 notes
+      if (state.selectedRange && state.selectedRange.startIndex !== state.selectedRange.endIndex) {
+        const start = Math.min(state.selectedRange.startIndex, state.selectedRange.endIndex);
+        const end = Math.max(state.selectedRange.startIndex, state.selectedRange.endIndex);
+        const notesWithIndices: { note: NoteElement; index: number }[] = [];
+        for (let i = start; i < end; i++) {
+          const elem = staff.elements[i];
+          if (elem && elem.type === 'note') {
+            notesWithIndices.push({ note: elem, index: i });
+          }
+        }
+
+        if (notesWithIndices.length >= 2) {
+          const first = notesWithIndices[0];
+          const last = notesWithIndices[notesWithIndices.length - 1];
+          const isTargetingLast = first.note.glissando?.targetNoteId === last.note.id;
+
+          const newElements = [...staff.elements];
+          if (isTargetingLast) {
+            // Remove glissando
+            const updatedFirst: NoteElement = { ...first.note };
+            delete updatedFirst.glissando;
+            newElements[first.index] = updatedFirst;
+          } else {
+            // Attach glissando
+            newElements[first.index] = {
+              ...first.note,
+              glissando: {
+                targetNoteId: last.note.id,
+                style: action.style || 'wavy',
+                text: action.text || 'gliss.',
+              },
+            };
+          }
+          const newStaves = [...state.present.staves];
+          newStaves[state.activeStaffIndex] = { ...staff, elements: newElements };
+          return pushHistory(state, { ...state.present, staves: newStaves });
+        }
+      }
+
+      // If no valid multi-note selection, target single note at cursor
+      let targetIndex = -1;
+      if (state.cursorIndex < staff.elements.length && staff.elements[state.cursorIndex]?.type === 'note') {
+        targetIndex = state.cursorIndex;
+      } else if (state.cursorIndex > 0 && staff.elements[state.cursorIndex - 1]?.type === 'note') {
+        targetIndex = state.cursorIndex - 1;
+      } else {
+        targetIndex = staff.elements.findIndex((e) => e.type === 'note');
+      }
+
+      if (targetIndex === -1) return state;
+      const targetNote = staff.elements[targetIndex] as NoteElement;
+
+      if (targetNote.glissando) {
+        // Toggle off
+        const updated: NoteElement = { ...targetNote };
+        delete updated.glissando;
+        const newElements = [...staff.elements];
+        newElements[targetIndex] = updated;
+        const newStaves = [...state.present.staves];
+        newStaves[state.activeStaffIndex] = { ...staff, elements: newElements };
+        return pushHistory(state, { ...state.present, staves: newStaves });
+      } else {
+        // Connect to next note if available
+        let nextNoteIndex = -1;
+        for (let i = targetIndex + 1; i < staff.elements.length; i++) {
+          if (staff.elements[i].type === 'note') {
+            nextNoteIndex = i;
+            break;
+          }
+        }
+        if (nextNoteIndex === -1) return state;
+        const nextNote = staff.elements[nextNoteIndex] as NoteElement;
+
+        const updated: NoteElement = {
+          ...targetNote,
+          glissando: {
+            targetNoteId: nextNote.id,
+            style: action.style || 'wavy',
+            text: action.text || 'gliss.',
+          },
+        };
+        const newElements = [...staff.elements];
+        newElements[targetIndex] = updated;
+        const newStaves = [...state.present.staves];
+        newStaves[state.activeStaffIndex] = { ...staff, elements: newElements };
+        return pushHistory(state, { ...state.present, staves: newStaves });
+      }
+    }
+
     case 'CYCLE_SLUR_DIRECTION': {
       const staff = state.present.staves[state.activeStaffIndex];
       if (!staff || staff.elements.length === 0) return state;
@@ -1572,6 +1749,91 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return state;
     }
 
+    case 'TOGGLE_OTTAVA_RANGE': {
+      const staff = state.present.staves[state.activeStaffIndex];
+      if (!staff || staff.elements.length === 0) return state;
+
+      // Determine if active selection range with >= 2 notes
+      if (state.selectedRange && state.selectedRange.startIndex !== state.selectedRange.endIndex) {
+        const start = Math.min(state.selectedRange.startIndex, state.selectedRange.endIndex);
+        const end = Math.max(state.selectedRange.startIndex, state.selectedRange.endIndex);
+        const notesWithIndices: { note: NoteElement; index: number }[] = [];
+        for (let i = start; i < end; i++) {
+          const elem = staff.elements[i];
+          if (elem && elem.type === 'note') {
+            notesWithIndices.push({ note: elem, index: i });
+          }
+        }
+
+        if (notesWithIndices.length >= 2) {
+          const first = notesWithIndices[0];
+          const last = notesWithIndices[notesWithIndices.length - 1];
+          const isSameOttava =
+            first.note.ottava?.targetNoteId === last.note.id &&
+            first.note.ottava?.type === action.ottavaType;
+
+          const newElements = [...staff.elements];
+          if (isSameOttava) {
+            // Remove ottava
+            const updatedFirst: NoteElement = { ...first.note };
+            delete updatedFirst.ottava;
+            newElements[first.index] = updatedFirst;
+          } else {
+            // Attach or replace ottava
+            newElements[first.index] = {
+              ...first.note,
+              ottava: {
+                type: action.ottavaType,
+                targetNoteId: last.note.id,
+              },
+            };
+          }
+          const newStaves = [...state.present.staves];
+          newStaves[state.activeStaffIndex] = { ...staff, elements: newElements };
+          return pushHistory(state, { ...state.present, staves: newStaves });
+        }
+      }
+
+      // If no valid multi-note selection, target single note at cursor
+      let targetIndex = -1;
+      if (state.cursorIndex < staff.elements.length && staff.elements[state.cursorIndex]?.type === 'note') {
+        targetIndex = state.cursorIndex;
+      } else if (state.cursorIndex > 0 && staff.elements[state.cursorIndex - 1]?.type === 'note') {
+        targetIndex = state.cursorIndex - 1;
+      } else {
+        targetIndex = staff.elements.findIndex((e) => e.type === 'note');
+      }
+
+      if (targetIndex !== -1) {
+        const targetNote = staff.elements[targetIndex] as NoteElement;
+        const newElements = [...staff.elements];
+        if (targetNote.ottava) {
+          const updated: NoteElement = { ...targetNote };
+          delete updated.ottava;
+          newElements[targetIndex] = updated;
+        } else {
+          // Look for next note in staff to target
+          const nextNote = staff.elements.slice(targetIndex + 1).find((e): e is NoteElement => e.type === 'note');
+          if (nextNote) {
+            newElements[targetIndex] = {
+              ...targetNote,
+              ottava: {
+                type: action.ottavaType,
+                targetNoteId: nextNote.id,
+              },
+            };
+          } else {
+            return state;
+          }
+        }
+        const newStaves = [...state.present.staves];
+        newStaves[state.activeStaffIndex] = { ...staff, elements: newElements };
+        return pushHistory(state, { ...state.present, staves: newStaves });
+      }
+
+      return state;
+    }
+
     case 'COPY_SELECTION': {
       const staff = state.present.staves[state.activeStaffIndex];
       if (!staff || staff.elements.length === 0) return state;
@@ -1688,6 +1950,17 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
             };
           } else {
             delete cloned.hairpin;
+          }
+        }
+
+        if (cloned.type === 'note' && cloned.ottava) {
+          if (idMap.has(cloned.ottava.targetNoteId)) {
+            cloned.ottava = {
+              ...cloned.ottava,
+              targetNoteId: idMap.get(cloned.ottava.targetNoteId)!,
+            };
+          } else {
+            delete cloned.ottava;
           }
         }
 

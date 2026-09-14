@@ -17,6 +17,21 @@ export interface SlurSpanner {
   direction?: SlurDirection;
 }
 
+export type GlissandoStyle = 'wavy' | 'straight';
+
+export interface GlissandoSpanner {
+  targetNoteId: string;
+  style?: GlissandoStyle;
+  text?: 'gliss.' | 'port.' | 'none';
+}
+
+export type OttavaType = '8va' | '8vb' | '15ma' | '15mb';
+
+export interface OttavaSpanner {
+  type: OttavaType;
+  targetNoteId: string;
+}
+
 export type NoteArticulation =
   | 'staccato'
   | 'tenuto'
@@ -51,6 +66,9 @@ export interface NoteElement {
   slur?: SlurSpanner;
   slurOut?: boolean;
   hairpin?: HairpinSpanner;
+  glissando?: GlissandoSpanner;
+  glissandoOut?: boolean;
+  ottava?: OttavaSpanner;
   // Articulations & Expressions
   staccato?: boolean;
   tenuto?: boolean;
@@ -212,6 +230,12 @@ export type InstrumentType =
   | 'trumpet'
   | 'tuba';
 
+export interface LyricPart {
+  id: string;
+  name: string;
+  layers: string[];
+}
+
 export interface Staff {
   id: string;
   name: string;
@@ -219,6 +243,7 @@ export interface Staff {
   elements: MusicElement[];
   lyrics: string[];
   verses?: string[][];
+  lyricParts?: LyricPart[];
   muted: boolean;
   volume: number;
   instrument?: InstrumentType;
@@ -262,6 +287,8 @@ export interface PageSetupConfig {
   staffScale: number;
   staffSpacing: number;
   systemSpacing: number;
+  pageWidthMm?: number;
+  pageHeightMm?: number;
   margins: {
     topMm: number;
     bottomMm: number;

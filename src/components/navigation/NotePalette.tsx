@@ -8,7 +8,7 @@ interface Props {
   entryState: EntryState;
   setEntryState: React.Dispatch<React.SetStateAction<EntryState>>;
   onInsertBar: (barType?: BarType) => void;
-  onToggleAttribute?: (attribute: 'tieOut' | 'slurOut' | 'staccato' | 'tenuto' | 'accent') => void;
+  onToggleAttribute?: (attribute: 'tieOut' | 'slurOut' | 'glissandoOut' | 'staccato' | 'tenuto' | 'accent') => void;
   onOpenClef?: () => void;
   onOpenKey?: () => void;
   onOpenTime?: () => void;
@@ -156,6 +156,10 @@ export const NotePalette: React.FC<Props> = ({
   const isStaccatoActive = Boolean(entryState.staccato) || (activeElement?.type === 'note' && Boolean(activeElement.staccato));
   const isTenutoActive = activeElement?.type === 'note' && Boolean(activeElement.tenuto);
   const isAccentActive = activeElement?.type === 'note' && Boolean(activeElement.accent);
+  const isOttava8vaActive = activeElement?.type === 'note' && activeElement.ottava?.type === '8va';
+  const isOttava8vbActive = activeElement?.type === 'note' && activeElement.ottava?.type === '8vb';
+  const isOttava15maActive = activeElement?.type === 'note' && activeElement.ottava?.type === '15ma';
+  const isOttava15mbActive = activeElement?.type === 'note' && activeElement.ottava?.type === '15mb';
 
   const durations: {
     duration: DurationValue;
@@ -217,10 +221,12 @@ export const NotePalette: React.FC<Props> = ({
     }));
   };
 
-  const handleToggleAttribute = (attribute: 'tieOut' | 'slurOut' | 'staccato' | 'tenuto' | 'accent') => {
+  const handleToggleAttribute = (attribute: 'tieOut' | 'slurOut' | 'glissandoOut' | 'staccato' | 'tenuto' | 'accent') => {
     if (hasActiveSelection) {
       if (attribute === 'slurOut') {
         dispatch?.({ type: 'TOGGLE_SLUR_RANGE' });
+      } else if (attribute === 'glissandoOut') {
+        dispatch?.({ type: 'TOGGLE_GLISSANDO_RANGE' });
       } else if (attribute === 'staccato' || attribute === 'tenuto' || attribute === 'accent') {
         dispatch?.({ type: 'BATCH_TOGGLE_NOTE_EXPRESSION', expression: attribute });
       } else {
@@ -231,7 +237,9 @@ export const NotePalette: React.FC<Props> = ({
         setEntryState((prev) => ({ ...prev, staccato: !prev.staccato }));
         return;
       }
-      if (onToggleAttribute) {
+      if (attribute === 'glissandoOut') {
+        dispatch?.({ type: 'TOGGLE_GLISSANDO_RANGE' });
+      } else if (onToggleAttribute) {
         onToggleAttribute(attribute);
       } else if (attribute === 'tenuto' || attribute === 'accent') {
         dispatch?.({ type: 'TOGGLE_NOTE_EXPRESSION', expression: attribute });
@@ -241,6 +249,8 @@ export const NotePalette: React.FC<Props> = ({
       setEntryState((prev) => ({ ...prev, slurOut: !prev.slurOut }));
     } else if (attribute === 'tieOut') {
       setEntryState((prev) => ({ ...prev, tieOut: !prev.tieOut }));
+    } else if (attribute === 'glissandoOut') {
+      setEntryState((prev) => ({ ...prev, glissandoOut: !prev.glissandoOut }));
     }
   };
 
@@ -331,6 +341,76 @@ export const NotePalette: React.FC<Props> = ({
             data-testid="btn-tie"
           >
             Tie (;)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleToggleAttribute('glissandoOut')}
+            className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+              entryState.glissandoOut
+                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            title="Glissando (G)"
+            data-testid="btn-glissando"
+          >
+            Gliss (G)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => dispatch?.({ type: 'TOGGLE_OTTAVA_RANGE', ottavaType: '8va' })}
+            className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors font-serif italic font-semibold ${
+              isOttava8vaActive
+                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            title="8va - Octave Higher (Alt+8)"
+            data-testid="btn-ottava-8va"
+          >
+            8va
+          </button>
+
+          <button
+            type="button"
+            onClick={() => dispatch?.({ type: 'TOGGLE_OTTAVA_RANGE', ottavaType: '8vb' })}
+            className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors font-serif italic font-semibold ${
+              isOttava8vbActive
+                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            title="8vb - Octave Lower (Alt+9)"
+            data-testid="btn-ottava-8vb"
+          >
+            8vb
+          </button>
+
+          <button
+            type="button"
+            onClick={() => dispatch?.({ type: 'TOGGLE_OTTAVA_RANGE', ottavaType: '15ma' })}
+            className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors font-serif italic font-semibold ${
+              isOttava15maActive
+                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            title="15ma - Two Octaves Higher"
+            data-testid="btn-ottava-15ma"
+          >
+            15ma
+          </button>
+
+          <button
+            type="button"
+            onClick={() => dispatch?.({ type: 'TOGGLE_OTTAVA_RANGE', ottavaType: '15mb' })}
+            className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors font-serif italic font-semibold ${
+              isOttava15mbActive
+                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            title="15mb - Two Octaves Lower"
+            data-testid="btn-ottava-15mb"
+          >
+            15mb
           </button>
 
           <button

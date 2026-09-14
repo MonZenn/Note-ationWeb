@@ -8,6 +8,7 @@ import {
   computeScoreMeasureNumbers,
   getActiveKeyAndClefAtMeasure,
   resolvePageSetup,
+  getPageDimensions,
   DEFAULT_PAGE_SETUP,
 } from './geometry';
 import { PositionedElement } from './ribbon';
@@ -230,6 +231,7 @@ export function wrapScoreIntoPages(
   maxSystemsPerPage?: number
 ): PageSystem[] {
   const pageSetup = resolvePageSetup(score.info?.pageSetup);
+  const pageDims = getPageDimensions(pageSetup);
   let systemWidth: number;
   let rawScale: number;
   let systemSpacing: number;
@@ -244,12 +246,12 @@ export function wrapScoreIntoPages(
     rawScale = systemWidthOrOptions.scale ?? pageSetup.staffScale;
     systemWidth =
       systemWidthOrOptions.systemWidth ??
-      computeEffectiveSystemWidth(820, pageSetup.margins.leftMm, pageSetup.margins.rightMm);
+      computeEffectiveSystemWidth(pageDims.widthPx, pageSetup.margins.leftMm, pageSetup.margins.rightMm);
     systemSpacing = systemWidthOrOptions.systemSpacing ?? pageSetup.systemSpacing;
     staffSpacing = systemWidthOrOptions.staffSpacing ?? pageSetup.staffSpacing;
   } else {
     rawScale = pageSetup.staffScale;
-    systemWidth = computeEffectiveSystemWidth(820, pageSetup.margins.leftMm, pageSetup.margins.rightMm);
+    systemWidth = computeEffectiveSystemWidth(pageDims.widthPx, pageSetup.margins.leftMm, pageSetup.margins.rightMm);
     systemSpacing = pageSetup.systemSpacing;
     staffSpacing = pageSetup.staffSpacing;
   }
@@ -586,8 +588,15 @@ export function wrapScoreIntoPages(
     const naturalMusicWidth = rawSys.units.reduce((sum, u) => sum + u.naturalWidth, 0);
     const totalNaturalWidth = startMusicX + naturalMusicWidth;
 
-    const isUnderfilled = isLastSystem && totalNaturalWidth < systemWidth * 0.7;
-    const shouldJustify = !isUnderfilled && naturalMusicWidth > 0 && systemWidth > startMusicX;
+    const lastUnit = rawSys.units[rawSys.units.length - 1];
+    const hasEndingFinalBar =
+      isLastSystem &&
+      lastUnit?.staves.some(
+        (s) => s.barElement && (s.barElement as import('../../types/score').BarLineElement).barType === 'final'
+      );
+
+    const isUnderfilled = isLastSystem && !hasEndingFinalBar && totalNaturalWidth < systemWidth * 0.7;
+    const shouldJustify = (!isUnderfilled || Boolean(hasEndingFinalBar)) && naturalMusicWidth > 0 && systemWidth > startMusicX;
 
     const justifyRatio = shouldJustify ? (systemWidth - startMusicX) / naturalMusicWidth : 1.0;
 
@@ -823,36 +832,49 @@ export function wrapScoreIntoPages(
     };
   });
 
-  // Determine system capacity per page dynamically
-  const primaryStavesCount = Math.max(1, effectivePrimaryStaves.length);
+  // Determine system capacity per page dynamically with strict footer clearance
   const staffSvgHeight = STAFF_HEIGHT * 2 * scale;
-  const systemHeight = primaryStavesCount * staffSvgHeight + (primaryStavesCount - 1) * staffSpacing;
 
-  const pageHeight = 1080;
+  const pageHeight = pageDims.heightPx;
   const marginVerticalPx = (pageSetup.margins.topMm + pageSetup.margins.bottomMm) * MM_TO_PX;
   const headerHeight = 160;
   const footerHeight = 85;
-  const page1AvailHeight = pageHeight - marginVerticalPx - headerHeight - footerHeight;
-  const otherPageAvailHeight = pageHeight - marginVerticalPx - footerHeight;
+  const safetyBuffer = 10;
+  const page1AvailHeight = pageHeight - marginVerticalPx - headerHeight - footerHeight - safetyBuffer;
+  const otherPageAvailHeight = pageHeight - marginVerticalPx - footerHeight - safetyBuffer;
 
-  const calcCapacity = (availHeight: number) => {
-    if (systemHeight <= 0) return 1;
-    const capacity = Math.floor((availHeight + systemSpacing) / (systemHeight + systemSpacing));
-    return Math.max(1, capacity);
+  const getSystemHeight = (sys: (typeof allSystems)[0]) => {
+    const count = Math.max(1, sys.staves.length);
+    return count * staffSvgHeight + (count - 1) * staffSpacing;
   };
 
-  const page1Capacity = maxSystemsPerPage ?? calcCapacity(page1AvailHeight);
-  const otherPageCapacity = maxSystemsPerPage ?? calcCapacity(otherPageAvailHeight);
-
   const pages: PageSystem[] = [];
-  const remainingSystems = [...allSystems];
+  let currentPageSystems: (typeof allSystems)[0][] = [];
+  let currentAccumulatedHeight = 0;
+  let isFirstPage = true;
 
-  const page1Systems = remainingSystems.splice(0, page1Capacity);
-  pages.push({ systems: page1Systems });
+  for (let i = 0; i < allSystems.length; i++) {
+    const sys = allSystems[i];
+    const sysHeight = getSystemHeight(sys);
+    const maxPageHeight = isFirstPage ? page1AvailHeight : otherPageAvailHeight;
 
-  while (remainingSystems.length > 0) {
-    const pageSystems = remainingSystems.splice(0, otherPageCapacity);
-    pages.push({ systems: pageSystems });
+    const addedHeight = currentPageSystems.length === 0 ? sysHeight : (systemSpacing + sysHeight);
+    const wouldExceed = currentAccumulatedHeight + addedHeight > maxPageHeight;
+    const hitExplicitCap = maxSystemsPerPage !== undefined && currentPageSystems.length >= maxSystemsPerPage;
+
+    if (currentPageSystems.length > 0 && (wouldExceed || hitExplicitCap)) {
+      pages.push({ systems: currentPageSystems });
+      currentPageSystems = [sys];
+      currentAccumulatedHeight = sysHeight;
+      isFirstPage = false;
+    } else {
+      currentPageSystems.push(sys);
+      currentAccumulatedHeight += addedHeight;
+    }
+  }
+
+  if (currentPageSystems.length > 0) {
+    pages.push({ systems: currentPageSystems });
   }
 
   return pages.length > 0 ? pages : [{ systems: allSystems }];

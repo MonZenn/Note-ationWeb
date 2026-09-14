@@ -10,9 +10,12 @@ import {
   TextCategory,
   TextPlacement,
   NoteOrnament,
+  GlissandoStyle,
   TempoBaseDuration,
   TempoDisplayMode,
   ScoreFontCategory,
+  OttavaType,
+  LyricPart,
 } from '../../types/score';
 
 export const VALID_SCORE_FONT_CATEGORIES: Set<ScoreFontCategory> = new Set([
@@ -72,6 +75,9 @@ const VALID_DYNAMIC_MARKS: Set<DynamicMark> = new Set([
   'fz',
 ]);
 const VALID_HAIRPIN_TYPES: Set<HairpinType> = new Set(['crescendo', 'decrescendo', 'cresc', 'decresc']);
+export const VALID_OTTAVA_TYPES: Set<OttavaType> = new Set(['8va', '8vb', '15ma', '15mb']);
+const VALID_GLISSANDO_STYLES: Set<GlissandoStyle> = new Set(['wavy', 'straight']);
+const VALID_GLISSANDO_TEXTS: Set<string> = new Set(['gliss.', 'port.', 'none']);
 const VALID_TEXT_CATEGORIES: Set<TextCategory> = new Set(['chord', 'part', 'note']);
 const VALID_TEXT_PLACEMENTS: Set<TextPlacement> = new Set(['above', 'below']);
 
@@ -96,7 +102,7 @@ export function serializeScore(score: Score): string {
   return JSON.stringify(score, null, 2);
 }
 
-export function deserializeScore(jsonString: string): { success: true; score: Score } | { success: false; error: string } {
+export function deserializeScore(jsonString: string): { success: true; score: Score; error?: undefined } | { success: false; error: string; score?: undefined } {
   try {
     const parsed = JSON.parse(jsonString);
 
@@ -183,6 +189,12 @@ export function deserializeScore(jsonString: string): { success: true; score: Sc
       }
       if (ps.systemSpacing !== undefined && (typeof ps.systemSpacing !== 'number' || !Number.isFinite(ps.systemSpacing) || ps.systemSpacing < 0)) {
         return { success: false, error: 'Invalid "pageSetup.systemSpacing": expected a non-negative number.' };
+      }
+      if (ps.pageWidthMm !== undefined && (typeof ps.pageWidthMm !== 'number' || !Number.isFinite(ps.pageWidthMm) || ps.pageWidthMm <= 0)) {
+        return { success: false, error: 'Invalid "pageSetup.pageWidthMm": expected a positive number.' };
+      }
+      if (ps.pageHeightMm !== undefined && (typeof ps.pageHeightMm !== 'number' || !Number.isFinite(ps.pageHeightMm) || ps.pageHeightMm <= 0)) {
+        return { success: false, error: 'Invalid "pageSetup.pageHeightMm": expected a positive number.' };
       }
       if (ps.margins !== undefined) {
         if (!ps.margins || typeof ps.margins !== 'object' || Array.isArray(ps.margins)) {
@@ -281,6 +293,30 @@ export function deserializeScore(jsonString: string): { success: true; score: Sc
         }
       }
 
+      if (staff.lyricParts !== undefined) {
+        if (
+          !Array.isArray(staff.lyricParts) ||
+          !staff.lyricParts.every(
+            (p: unknown) =>
+              p &&
+              typeof p === 'object' &&
+              typeof (p as LyricPart).id === 'string' &&
+              typeof (p as LyricPart).name === 'string' &&
+              Array.isArray((p as LyricPart).layers) &&
+              (p as LyricPart).layers.every((l: unknown) => typeof l === 'string')
+          )
+        ) {
+          return { success: false, error: `Invalid staff at index ${i}: "lyricParts" must be an array of LyricPart objects.` };
+        }
+      }
+
+      // Backward compatibility migration:
+      if (staff.verses === undefined && staff.lyrics !== undefined) {
+        staff.verses = [staff.lyrics];
+      } else if (staff.lyrics === undefined && staff.verses !== undefined) {
+        staff.lyrics = staff.verses[0] || [];
+      }
+
       if (!Array.isArray(staff.elements)) {
         return { success: false, error: `Invalid staff at index ${i}: "elements" must be an array.` };
       }
@@ -322,6 +358,39 @@ export function deserializeScore(jsonString: string): { success: true; score: Sc
             }
             if (!VALID_HAIRPIN_TYPES.has(elem.hairpin.type as HairpinType)) {
               return { success: false, error: `Invalid note at staff ${i}, element ${j}: invalid "hairpin.type" '${elem.hairpin.type}'. Expected crescendo or decrescendo.` };
+            }
+          }
+
+          if (elem.glissando !== undefined) {
+            if (!elem.glissando || typeof elem.glissando !== 'object' || Array.isArray(elem.glissando)) {
+              return { success: false, error: `Invalid note at staff ${i}, element ${j}: "glissando" must be an object.` };
+            }
+            if (typeof elem.glissando.targetNoteId !== 'string' || elem.glissando.targetNoteId.trim().length === 0) {
+              return { success: false, error: `Invalid note at staff ${i}, element ${j}: "glissando.targetNoteId" must be a non-empty string.` };
+            }
+            if (elem.glissando.style !== undefined && !VALID_GLISSANDO_STYLES.has(elem.glissando.style as GlissandoStyle)) {
+              return { success: false, error: `Invalid note at staff ${i}, element ${j}: invalid "glissando.style" '${elem.glissando.style}'. Expected wavy or straight.` };
+            }
+            if (elem.glissando.text !== undefined && !VALID_GLISSANDO_TEXTS.has(elem.glissando.text)) {
+              return { success: false, error: `Invalid note at staff ${i}, element ${j}: invalid "glissando.text" '${elem.glissando.text}'. Expected gliss., port., or none.` };
+            }
+          } else if (elem.glissandoOut === true) {
+            // Legacy migration: connect to the next note if available
+            const nextNote = staff.elements.slice(j + 1).find((e: any) => e && e.type === 'note');
+            if (nextNote && typeof nextNote.id === 'string') {
+              elem.glissando = { targetNoteId: nextNote.id, style: 'wavy', text: 'gliss.' };
+            }
+          }
+
+          if (elem.ottava !== undefined) {
+            if (!elem.ottava || typeof elem.ottava !== 'object' || Array.isArray(elem.ottava)) {
+              return { success: false, error: `Invalid note at staff ${i}, element ${j}: "ottava" must be an object.` };
+            }
+            if (typeof elem.ottava.targetNoteId !== 'string' || elem.ottava.targetNoteId.trim().length === 0) {
+              return { success: false, error: `Invalid note at staff ${i}, element ${j}: "ottava.targetNoteId" must be a non-empty string.` };
+            }
+            if (!VALID_OTTAVA_TYPES.has(elem.ottava.type as OttavaType)) {
+              return { success: false, error: `Invalid note at staff ${i}, element ${j}: invalid "ottava.type" '${elem.ottava.type}'. Expected 8va, 8vb, 15ma, or 15mb.` };
             }
           }
 
@@ -409,6 +478,8 @@ export function deserializeScore(jsonString: string): { success: true; score: Sc
     return { success: false, error: `Invalid JSON syntax: ${(err as Error).message}` };
   }
 }
+
+export const loadScoreFromJson = deserializeScore;
 
 
 export function downloadScoreFile(score: Score): void {

@@ -214,6 +214,15 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
     });
   };
 
+  const handleStaffScaleChange = (newScale: number) => {
+    const clamped = clamp(newScale, 0.25, 3.0);
+    setStaffScale(clamped);
+    // Proportionally scale systemSpacing and staffSpacing relative to default scale (0.75)
+    const ratio = clamped / DEFAULT_PAGE_SETUP.staffScale;
+    setSystemSpacingInput(String(Math.round(DEFAULT_PAGE_SETUP.systemSpacing * ratio)));
+    setStaffSpacingInput(String(Math.round(DEFAULT_PAGE_SETUP.staffSpacing * ratio)));
+  };
+
   const handleResetDefaults = () => {
     setStaffScale(DEFAULT_PAGE_SETUP.staffScale);
     setSystemSpacingInput(String(DEFAULT_PAGE_SETUP.systemSpacing));
@@ -286,6 +295,8 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
       staffScale: clamp(staffScale, 0.25, 3.0),
       systemSpacing: finalSystemSpacing,
       staffSpacing: finalStaffSpacing,
+      pageWidthMm: DEFAULT_PAGE_SETUP.pageWidthMm,
+      pageHeightMm: DEFAULT_PAGE_SETUP.pageHeightMm,
       margins: {
         topMm: finalTopMm,
         bottomMm: finalBottomMm,
@@ -376,14 +387,14 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
         <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
           {activeTab === 'sizing' ? (
             <div className="flex flex-col gap-6">
-              {/* Staff Scale Section */}
+              {/* Score Scale Section */}
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                 <div className="flex items-center justify-between mb-2">
                   <label
                     htmlFor="staff-scale"
                     className="text-xs font-bold text-slate-700 uppercase tracking-wide"
                   >
-                    Staff Scale
+                    Score Scale
                   </label>
                   <span
                     data-testid="staff-scale-display"
@@ -394,7 +405,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
                 </div>
 
                 <p className="text-xs text-slate-500 mb-3">
-                  Proportionally scales all staff lines, noteheads, clefs, stems, and accidentals (25% - 200%).
+                  Proportionally scales all staff lines, noteheads, clefs, stems, and vertical spacings.
                 </p>
 
                 <div className="flex items-center gap-3">
@@ -408,7 +419,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
                     step="5"
                     value={staffScalePct}
                     onChange={(e) =>
-                      setStaffScale(clamp(Math.round(Number(e.target.value)) / 100, 0.25, 3.0))
+                      handleStaffScaleChange(Math.round(Number(e.target.value)) / 100)
                     }
                     className="flex-1 accent-blue-600 cursor-pointer"
                   />
@@ -421,7 +432,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
                       onChange={(e) => {
                         const val = Number(e.target.value);
                         if (!isNaN(val) && val > 0) {
-                          setStaffScale(clamp(val / 100, 0.25, 3.0));
+                          handleStaffScaleChange(val / 100);
                         }
                       }}
                       className="w-16 border border-slate-300 rounded px-2 py-1 text-xs font-mono font-bold text-center bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -438,7 +449,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
                     <button
                       type="button"
                       data-testid="preset-tiny"
-                      onClick={() => setStaffScale(0.5)}
+                      onClick={() => handleStaffScaleChange(0.5)}
                       className={`px-2.5 py-1 text-xs rounded border transition-colors cursor-pointer ${
                         staffScalePct === 50
                           ? 'bg-blue-600 text-white border-blue-600 font-bold'
@@ -450,7 +461,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
                     <button
                       type="button"
                       data-testid="preset-small"
-                      onClick={() => setStaffScale(0.75)}
+                      onClick={() => handleStaffScaleChange(0.75)}
                       className={`px-2.5 py-1 text-xs rounded border transition-colors cursor-pointer ${
                         staffScalePct === 75
                           ? 'bg-blue-600 text-white border-blue-600 font-bold'
@@ -462,7 +473,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
                     <button
                       type="button"
                       data-testid="preset-standard"
-                      onClick={() => setStaffScale(1.0)}
+                      onClick={() => handleStaffScaleChange(1.0)}
                       className={`px-2.5 py-1 text-xs rounded border transition-colors cursor-pointer ${
                         staffScalePct === 100
                           ? 'bg-blue-600 text-white border-blue-600 font-bold'
@@ -474,7 +485,7 @@ export const PageSetupModal: React.FC<PageSetupModalProps> = ({
                     <button
                       type="button"
                       data-testid="preset-large"
-                      onClick={() => setStaffScale(1.2)}
+                      onClick={() => handleStaffScaleChange(1.2)}
                       className={`px-2.5 py-1 text-xs rounded border transition-colors cursor-pointer ${
                         staffScalePct === 120
                           ? 'bg-blue-600 text-white border-blue-600 font-bold'

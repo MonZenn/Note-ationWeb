@@ -129,9 +129,16 @@ export function computeJustifiedStaffElementPositions(
   const naturalMusicWidth = naturalWidths.reduce((sum, w) => sum + w, 0);
   const totalNaturalWidth = startMusicX + naturalMusicWidth;
 
+  const lastMusicElem = musicElements[musicElements.length - 1];
+  const hasEndingFinalBar =
+    isLastSystem &&
+    lastMusicElem?.type === 'bar' &&
+    (lastMusicElem as import('../../types/score').BarLineElement).barType === 'final';
+
   // If this is the last system of the score and underfilled (< 70% of targetWidth),
-  // retain standard natural spacing to avoid unnaturally stretching ending measures.
-  const isUnderfilled = isLastSystem && totalNaturalWidth < targetWidth * 0.7;
+  // retain standard natural spacing to avoid unnaturally stretching ending measures,
+  // unless it concludes with a final barline (where all measures on that line extend proportionally).
+  const isUnderfilled = isLastSystem && !hasEndingFinalBar && totalNaturalWidth < targetWidth * 0.7;
 
   if (isUnderfilled || naturalMusicWidth <= 0 || targetWidth <= startMusicX) {
     for (let i = 0; i < musicElements.length; i++) {

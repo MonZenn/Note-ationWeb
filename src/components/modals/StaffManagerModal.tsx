@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Staff, InstrumentType } from '../../types/score';
+import { Staff, InstrumentType, ClefType } from '../../types/score';
 import { X, Layers, Plus, Trash2, Volume2, VolumeX, Radio, ChevronUp, ChevronDown, Link2 } from 'lucide-react';
 
 export const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string }[] = [
@@ -23,7 +23,7 @@ export interface StaffManagerModalProps {
   staves: Staff[];
   activeStaffIndex?: number;
   onSelectStaff?: (index: number) => void;
-  onAddStaff: (name: string, clef: 'treble' | 'bass', instrument?: InstrumentType) => void;
+  onAddStaff: (name: string, clef: ClefType, instrument?: InstrumentType) => void;
   onAddSubstaff?: (parentStaffId: string) => void;
   onRemoveStaff: (index: number) => void;
   onUpdateStaff: (index: number, updates: Partial<Staff>) => void;
@@ -43,7 +43,7 @@ export const StaffManagerModal: React.FC<StaffManagerModalProps> = ({
   onReorderStaves,
 }) => {
   const [newStaffName, setNewStaffName] = useState('');
-  const [newStaffClef, setNewStaffClef] = useState<'treble' | 'bass'>('treble');
+  const [newStaffClef, setNewStaffClef] = useState<ClefType>('treble');
   const [newStaffInstrument, setNewStaffInstrument] = useState<InstrumentType>('piano');
 
   if (!isOpen) return null;
@@ -162,9 +162,18 @@ export const StaffManagerModal: React.FC<StaffManagerModalProps> = ({
                             title="Edit staff name"
                             data-testid={`staff-name-input-${idx}`}
                           />
-                          <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-mono border border-slate-200">
-                            {staff.initialClef === 'treble' ? '𝄞 Treble' : '𝄢 Bass'}
-                          </span>
+                          <select
+                            value={staff.initialClef}
+                            onChange={(e) => onUpdateStaff(idx, { initialClef: e.target.value as ClefType })}
+                            className="text-xs px-2 py-1 rounded-lg bg-slate-50 hover:bg-white focus:bg-white border border-slate-300 focus:border-blue-500 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs cursor-pointer transition-colors"
+                            title="Change initial clef"
+                            data-testid={`staff-clef-select-${idx}`}
+                          >
+                            <option value="treble">𝄞 Treble</option>
+                            <option value="bass">𝄢 Bass</option>
+                            <option value="alto">𝄡 Alto</option>
+                            <option value="tenor">𝄡 Tenor</option>
+                          </select>
                           {staff.substaffOf && (
                             <span className="text-[11px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-semibold border border-indigo-200">
                               Voice 2 Substaff
@@ -373,12 +382,14 @@ export const StaffManagerModal: React.FC<StaffManagerModalProps> = ({
                 </label>
                 <select
                   value={newStaffClef}
-                  onChange={(e) => setNewStaffClef(e.target.value as 'treble' | 'bass')}
+                  onChange={(e) => setNewStaffClef(e.target.value as ClefType)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs cursor-pointer"
                   data-testid="new-staff-clef-select"
                 >
                   <option value="treble">𝄞 Treble Clef</option>
                   <option value="bass">𝄢 Bass Clef</option>
+                  <option value="alto">𝄡 Alto Clef</option>
+                  <option value="tenor">𝄡 Tenor Clef</option>
                 </select>
               </div>
 

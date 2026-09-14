@@ -44,6 +44,9 @@ const SHORTCUTS: ShortcutItem[] = [
   { key: '> / Shift + .', desc: 'Toggle decrescendo hairpin on selected range', category: 'Expressions & Phrasing' },
   { key: 'D / Shift + ↑/↓', desc: 'Cycle stem direction (Auto / Up / Down)', category: 'Expressions & Phrasing' },
   { key: 'B', desc: 'Toggle metric note beaming (Auto / Break / Join)', category: 'Expressions & Phrasing' },
+  { key: 'G', desc: 'Toggle glissando spanner on note or selection', category: 'Expressions & Phrasing' },
+  { key: 'Alt + 8', desc: 'Toggle 8va (octave higher) spanner on selection or note', category: 'Expressions & Phrasing' },
+  { key: 'Alt + 9 / Alt + Shift + 8', desc: 'Toggle 8vb (octave lower) spanner on selection or note', category: 'Expressions & Phrasing' },
 
   // Repeats & Structure
   { key: 'R', desc: 'Open Repeats & Ending (Voltas 1st/2nd) dialog', category: 'Repeats & Structure' },

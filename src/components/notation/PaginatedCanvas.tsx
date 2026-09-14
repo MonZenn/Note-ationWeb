@@ -6,7 +6,7 @@ import {
   computeMultiMeasureRests,
   computeEffectiveSystemWidth,
 } from '../../engine/layout/pagination';
-import { resolvePageSetup, resolveScoreFonts, STAFF_HEIGHT } from '../../engine/layout/geometry';
+import { resolvePageSetup, resolveScoreFonts, getPageDimensions, STAFF_HEIGHT, getFinalBarlineLayout } from '../../engine/layout/geometry';
 import { StaffSvg } from './StaffSvg';
 import { Printer } from 'lucide-react';
 
@@ -28,8 +28,9 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fonts = resolveScoreFonts(score.info?.fonts);
   const pageSetup = resolvePageSetup(score.info?.pageSetup);
+  const pageDims = getPageDimensions(pageSetup);
   const systemWidth = computeEffectiveSystemWidth(
-    820,
+    pageDims.widthPx,
     pageSetup.margins.leftMm,
     pageSetup.margins.rightMm
   );
@@ -53,8 +54,14 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
     for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
       for (let sysIdx = 0; sysIdx < pages[pageIdx].systems.length; sysIdx++) {
         const sys = pages[pageIdx].systems[sysIdx];
-        const staffObj = sys.staves.find((s) => s.staffId === playingStaff.id);
-        if (staffObj && staffObj.elements.some((e) => e.id === playingElem.id)) {
+        const staffObj = sys.staves.find(
+          (s) => s.staffId === playingStaff.id || (playingStaff.substaffOf && s.staffId === playingStaff.substaffOf)
+        );
+        if (
+          staffObj &&
+          (staffObj.elements.some((e) => e.id === playingElem.id) ||
+            (staffObj.substaffElements && staffObj.substaffElements.some((e) => e.id === playingElem.id)))
+        ) {
           const el = document.getElementById(`page-system-${pageIdx}-${sysIdx}`);
           if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -76,7 +83,7 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
       className="flex-1 overflow-y-auto bg-slate-200 p-8 flex flex-col items-center gap-6 print:bg-white print:p-0 print:overflow-visible"
     >
       {/* Print Trigger Button */}
-      <div className="w-[820px] flex justify-end no-print print:hidden">
+      <div className="flex justify-end no-print print:hidden" style={{ width: `${pageDims.widthPx}px` }}>
         <button
           onClick={handlePrint}
           className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded shadow hover:bg-slate-800 font-medium text-sm cursor-pointer transition-colors"
@@ -90,15 +97,17 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
       {pages.map((page, pageIdx) => (
         <div
           key={pageIdx}
-          className="sheet-page bg-white shadow-xl w-[820px] min-h-[1080px] flex flex-col justify-between border border-slate-300 page-break"
+          className="sheet-page bg-white shadow-xl flex flex-col justify-between border border-slate-300 page-break relative"
           style={{
+            width: `${pageDims.widthPx}px`,
+            minHeight: `${pageDims.heightPx}px`,
             paddingTop: `${pageSetup.margins.topMm}mm`,
             paddingBottom: `${pageSetup.margins.bottomMm}mm`,
             paddingLeft: `${pageSetup.margins.leftMm}mm`,
             paddingRight: `${pageSetup.margins.rightMm}mm`,
           }}
         >
-          <div>
+          <div className="flex-1 flex flex-col">
             {/* Page 1 Score Header */}
             {pageIdx === 0 && (
               <div className="mb-8 border-b pb-4">
@@ -217,6 +226,7 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
                             scale={pageSetup.staffScale}
                             fonts={fonts}
                             autoBeaming={score.info.autoBeaming === true}
+                            isPageView={true}
                           />
                         </div>
                       );
@@ -312,10 +322,27 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
                                 );
                               }
                               if (barType === 'final') {
+                                const finalLayout = getFinalBarlineLayout(bp.x, bp.width, scale, true);
                                 return (
                                   <g key={`conn-${bp.element.id}-gap-${gapIdx}`}>
-                                    <line x1={bp.x + 8} y1={y1} x2={bp.x + 8} y2={y2} stroke="#0f172a" strokeWidth="1.5" data-testid="system-barline-connector" />
-                                    <line x1={bp.x + 13} y1={y1} x2={bp.x + 13} y2={y2} stroke="#0f172a" strokeWidth="3.5" data-testid="system-barline-connector" />
+                                    <line
+                                      x1={finalLayout.thinX}
+                                      y1={y1}
+                                      x2={finalLayout.thinX}
+                                      y2={y2}
+                                      stroke="#0f172a"
+                                      strokeWidth={finalLayout.thinStrokeWidth}
+                                      data-testid="system-barline-connector"
+                                    />
+                                    <line
+                                      x1={finalLayout.thickX}
+                                      y1={y1}
+                                      x2={finalLayout.thickX}
+                                      y2={y2}
+                                      stroke="#0f172a"
+                                      strokeWidth={finalLayout.thickStrokeWidth}
+                                      data-testid="system-barline-connector"
+                                    />
                                   </g>
                                 );
                               }
@@ -369,7 +396,7 @@ export const PaginatedCanvas: React.FC<Props> = ({ score, playbackCursor }) => {
           </div>
 
           {/* Footer */}
-          <div className="text-center text-slate-500 mt-6 border-t pt-2 flex flex-col items-center gap-1 shrink-0">
+          <div className="page-footer shrink-0 text-center text-slate-500 pt-2 border-t mt-2 flex flex-col items-center gap-1">
             <div style={getFontStyle(fonts.pageNumbers)}>— {pageIdx + 1} —</div>
             <div className="text-xs font-serif">
               {score.info.copyright || `© ${new Date().getFullYear()} Note-ation`}

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { ScoreAction, ScoreState } from '../state/scoreStore';
 import { DurationValue, AccidentalType, TextCategory } from '../types/score';
 import { playPitchAudition } from '../engine/audio/synth';
-import { getStaffContextAt } from '../utils/pitchUtils';
+import { getStaffContextAt, getOttavaShiftAt } from '../utils/pitchUtils';
 
 export interface EntryState {
   duration: DurationValue;
@@ -11,6 +11,7 @@ export interface EntryState {
   pitchOffset: number;
   tieOut?: boolean;
   slurOut?: boolean;
+  glissandoOut?: boolean;
   staccato?: boolean;
 }
 
@@ -72,10 +73,22 @@ export function mapKeyToScoreAction(
       return { entryUpdate: { dots: nextDots } };
     }
 
+    // Ottava Spanners: Alt+8 / Option+8 for 8va, Alt+9 / Alt+Shift+8 for 8vb
+    if (altKey) {
+      if ((key === '8' || key === '•') && !shiftKey) {
+        return { type: 'TOGGLE_OTTAVA_RANGE', ottavaType: '8va' };
+      }
+      if (key === '9' || ((key === '8' || key === '•') && shiftKey)) {
+        return { type: 'TOGGLE_OTTAVA_RANGE', ottavaType: '8vb' };
+      }
+    }
+
     // Accidentals: 7=natural, 8=flat, 9=sharp (toggle on and off)
-    if (key === '7') return { entryUpdate: { accidental: entry.accidental === 'natural' ? undefined : 'natural' } };
-    if (key === '8') return { entryUpdate: { accidental: entry.accidental === 'flat' ? undefined : 'flat' } };
-    if (key === '9') return { entryUpdate: { accidental: entry.accidental === 'sharp' ? undefined : 'sharp' } };
+    if (!altKey) {
+      if (key === '7') return { entryUpdate: { accidental: entry.accidental === 'natural' ? undefined : 'natural' } };
+      if (key === '8') return { entryUpdate: { accidental: entry.accidental === 'flat' ? undefined : 'flat' } };
+      if (key === '9') return { entryUpdate: { accidental: entry.accidental === 'sharp' ? undefined : 'sharp' } };
+    }
 
 
     // Articulations & Slurs
@@ -85,6 +98,7 @@ export function mapKeyToScoreAction(
     if (key === ';') return { type: 'TOGGLE_NOTE_ATTRIBUTE', attribute: 'tieOut' };
     if (key === ',') return { type: 'TOGGLE_NOTE_EXPRESSION', expression: 'staccato' };
     if (key === '_' || (shiftKey && key === '-')) return { type: 'TOGGLE_NOTE_ATTRIBUTE', attribute: 'tenuto' };
+    if (key === 'g' || key === 'G') return { type: 'TOGGLE_GLISSANDO_RANGE' };
 
 
     // Structural & Expression Dialog Shortcuts
@@ -162,6 +176,7 @@ export function mapKeyToScoreAction(
         stemDirection: 'auto',
         tieOut: entry.tieOut,
         slurOut: entry.slurOut,
+        glissandoOut: entry.glissandoOut,
         staccato: entry.staccato ? true : undefined,
       },
     };
@@ -241,6 +256,8 @@ export function handleKeyDown(
     dialogCallbacks?.onOpenPageSetup ||
     (typeof onPlayToggle === 'object' ? onPlayToggle?.onOpenPageSetup : undefined);
 
+  const isCtrl = e.ctrlKey || e.metaKey;
+
   // Direct Tempo Shortcut: Alt / Option + T
   if (e.altKey && (e.key === 't' || e.key === 'T')) {
     e.preventDefault();
@@ -248,7 +265,19 @@ export function handleKeyDown(
     return;
   }
 
-  const isCtrl = e.ctrlKey || e.metaKey;
+  // Ottava Shortcuts: Alt + 8 (8va) / Alt + 9 or Alt + Shift + 8 (8vb)
+  if (e.altKey && !isCtrl) {
+    if ((e.key === '8' || e.key === '•' || e.code === 'Digit8') && !e.shiftKey) {
+      e.preventDefault();
+      dispatch({ type: 'TOGGLE_OTTAVA_RANGE', ottavaType: '8va' });
+      return;
+    }
+    if (e.key === '9' || e.code === 'Digit9' || ((e.key === '8' || e.key === '•' || e.code === 'Digit8') && e.shiftKey)) {
+      e.preventDefault();
+      dispatch({ type: 'TOGGLE_OTTAVA_RANGE', ottavaType: '8vb' });
+      return;
+    }
+  }
 
   // Triplet Shortcut: Shift + 3 (and Shift + # on international keyboards)
   if (e.shiftKey && (e.key === '3' || e.key === '#') && !isCtrl && !e.altKey) {
@@ -567,25 +596,43 @@ export function handleKeyDown(
           setEntryState((prev) => ({ ...prev, slurOut: !prev.slurOut }));
         } else if (mapped.attribute === 'tieOut') {
           setEntryState((prev) => ({ ...prev, tieOut: !prev.tieOut }));
+        } else if (mapped.attribute === 'glissandoOut') {
+          setEntryState((prev) => ({ ...prev, glissandoOut: !prev.glissandoOut }));
         }
       } else if (mapped.type === 'TOGGLE_SLUR_RANGE') {
         setEntryState((prev) => ({ ...prev, slurOut: !prev.slurOut }));
+      } else if (mapped.type === 'TOGGLE_GLISSANDO_RANGE') {
+        setEntryState((prev) => ({ ...prev, glissandoOut: !prev.glissandoOut }));
       } else if (mapped.type === 'TOGGLE_NOTE_EXPRESSION' && mapped.expression === 'staccato') {
         setEntryState((prev) => ({ ...prev, staccato: !prev.staccato }));
       } else if (mapped.type === 'INSERT_ELEMENT' && mapped.element.type === 'note') {
 
         const staff = state.present.staves[state.activeStaffIndex];
         const context = getStaffContextAt(staff, state.cursorIndex);
+        const ottavaShift = getOttavaShiftAt(staff, state.cursorIndex);
         const pitch = mapped.element.pitches[0];
         if (pitch) {
-          playPitchAudition(
-            pitch.diatonicOffset,
-            context.clef,
-            pitch.accidental,
-            context.keyAccidentalsCount,
-            context.instrument,
-            0.3
-          );
+          if (ottavaShift !== 0) {
+            playPitchAudition(
+              pitch.diatonicOffset,
+              context.clef,
+              pitch.accidental,
+              context.keyAccidentalsCount,
+              context.instrument,
+              0.3,
+              1.0,
+              ottavaShift
+            );
+          } else {
+            playPitchAudition(
+              pitch.diatonicOffset,
+              context.clef,
+              pitch.accidental,
+              context.keyAccidentalsCount,
+              context.instrument,
+              0.3
+            );
+          }
         }
         // Both Dot and Staccato reset to none after entering note
         setEntryState((prev) => ({ ...prev, dots: 0, staccato: false }));
@@ -594,14 +641,28 @@ export function handleKeyDown(
       } else if (mapped.type === 'ADD_CHORD_PITCH') {
         const staff = state.present.staves[state.activeStaffIndex];
         const context = getStaffContextAt(staff, state.cursorIndex);
-        playPitchAudition(
-          mapped.pitch.diatonicOffset,
-          context.clef,
-          mapped.pitch.accidental,
-          context.keyAccidentalsCount,
-          context.instrument,
-          0.3
-        );
+        const ottavaShift = getOttavaShiftAt(staff, state.cursorIndex);
+        if (ottavaShift !== 0) {
+          playPitchAudition(
+            mapped.pitch.diatonicOffset,
+            context.clef,
+            mapped.pitch.accidental,
+            context.keyAccidentalsCount,
+            context.instrument,
+            0.3,
+            1.0,
+            ottavaShift
+          );
+        } else {
+          playPitchAudition(
+            mapped.pitch.diatonicOffset,
+            context.clef,
+            mapped.pitch.accidental,
+            context.keyAccidentalsCount,
+            context.instrument,
+            0.3
+          );
+        }
       }
       dispatch(mapped);
     }

@@ -8,6 +8,7 @@ import {
   getEffectiveStemDirection,
   getNoteStemLength,
   KEY_SIGNATURE_OFFSETS,
+  getFinalBarlineLayout,
 } from '../../engine/layout/geometry';
 import { REST_GLYPHS, MUSIC_GLYPHS } from '../../utils/musicGlyphs';
 
@@ -30,6 +31,7 @@ interface Props {
   voice?: 'voice-1' | 'voice-2';
   noteheadShift?: number;
   hasResolvedTie?: boolean;
+  isPageView?: boolean;
 }
 
 export const ElementSvg: React.FC<Props> = ({
@@ -45,6 +47,7 @@ export const ElementSvg: React.FC<Props> = ({
   voice,
   noteheadShift = 0,
   hasResolvedTie = false,
+  isPageView = false,
 }) => {
 
   if (element.type === 'note') {
@@ -363,6 +366,18 @@ export const ElementSvg: React.FC<Props> = ({
             data-testid="slur-curve"
           />
         )}
+
+        {/* Glissando Out Preview (single-note entry preview) */}
+        {element.glissandoOut && !element.glissando && (
+          <path
+            d={`M ${12 * scale + shiftX} ${bottomPitchY} L ${28 * scale + shiftX} ${bottomPitchY - 10 * scale}`}
+            fill="none"
+            stroke="#0f172a"
+            strokeWidth={1.5 * scale}
+            strokeDasharray="2,2"
+            data-testid="glissando-preview"
+          />
+        )}
       </g>
     );
   }
@@ -487,11 +502,26 @@ export const ElementSvg: React.FC<Props> = ({
     }
 
     if (element.barType === 'final') {
+      const finalLayout = getFinalBarlineLayout(0, width, scale, isPageView);
       return (
         <g transform={`translate(${x}, 0)`} data-testid="bar-element">
           <g data-testid="bar-final">
-            <line x1={8} y1={topY} x2={8} y2={bottomY} stroke="#0f172a" strokeWidth="1.5" />
-            <line x1={13} y1={topY} x2={13} y2={bottomY} stroke="#0f172a" strokeWidth="3.5" />
+            <line
+              x1={finalLayout.thinX}
+              y1={topY}
+              x2={finalLayout.thinX}
+              y2={bottomY}
+              stroke="#0f172a"
+              strokeWidth={finalLayout.thinStrokeWidth}
+            />
+            <line
+              x1={finalLayout.thickX}
+              y1={topY}
+              x2={finalLayout.thickX}
+              y2={bottomY}
+              stroke="#0f172a"
+              strokeWidth={finalLayout.thickStrokeWidth}
+            />
           </g>
         </g>
       );
@@ -670,12 +700,24 @@ export const ElementSvg: React.FC<Props> = ({
     };
     const glyph = clefGlyphs[element.clefType] || '𝄞';
     const isTreble = element.clefType === 'treble';
+    const isAlto = element.clefType === 'alto';
+    const isTenor = element.clefType === 'tenor';
+
+    let clefY = centerY + 8 * scale;
+    if (isTreble) {
+      clefY = centerY + 18 * scale;
+    } else if (isTenor) {
+      clefY = centerY + 0 * scale;
+    } else if (isAlto) {
+      clefY = centerY + 10 * scale;
+    }
+
     return (
       <g transform={`translate(${x}, 0)`} data-testid="inline-clef">
         <text
           x={14 * scale}
-          y={isTreble ? centerY + 13 * scale : centerY + 5 * scale}
-          fontSize={isTreble ? `${Math.round(38 * scale)}px` : `${Math.round(30 * scale)}px`}
+          y={clefY}
+          fontSize={isTreble ? `${Math.round(52 * scale)}px` : `${Math.round(42 * scale)}px`}
           fontWeight="bold"
           fill="#0f172a"
           textAnchor="middle"

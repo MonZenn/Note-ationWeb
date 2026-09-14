@@ -34,12 +34,18 @@
     break-after: page;
   }
   .sheet-page {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
     width: 100% !important;
     min-height: 100vh !important;
     box-shadow: none !important;
     border: none !important;
-    padding: 12mm !important;
     margin: 0 !important;
+    overflow: visible !important;
+  }
+  .page-footer {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
   .sheet-page:last-child {
     break-after: auto !important;

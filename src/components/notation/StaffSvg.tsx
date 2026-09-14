@@ -24,6 +24,10 @@ import {
   MeasureNumberInfo,
   resolveStaffTies,
   computeTieGeometry,
+  computeGlissandoGeometry,
+  resolveStaffOttavas,
+  computeOttavaGeometry,
+  getFinalBarlineLayout,
 } from '../../engine/layout/geometry';
 
 import { computeStaffElementPositions, PositionedElement } from '../../engine/layout/ribbon';
@@ -59,6 +63,7 @@ interface Props {
   scale?: number;
   fonts?: ScoreFontsConfig;
   autoBeaming?: boolean;
+  isPageView?: boolean;
 }
 
 export const StaffSvg: React.FC<Props> = ({
@@ -88,6 +93,7 @@ export const StaffSvg: React.FC<Props> = ({
   scale = 1.0,
   fonts,
   autoBeaming = false,
+  isPageView = false,
 }) => {
   const effectiveStaff: Staff = staff
     ? {
@@ -423,9 +429,124 @@ export const StaffSvg: React.FC<Props> = ({
     }
   });
 
+  // Glissando Spanners (TASK-30)
+  const glissandoPaths: React.ReactNode[] = [];
+  positionedElements.forEach(({ element, x: elemX }) => {
+    if (element.type === 'note' && element.glissando) {
+      const targetPosItem = positionedElements.find(
+        (p) => p.element.id === element.glissando?.targetNoteId && p.element.type === 'note'
+      );
+      const targetNoteElem = targetPosItem?.element as NoteElement | undefined;
+
+      if (targetNoteElem && targetPosItem) {
+        const glissGeom = computeGlissandoGeometry(
+          element,
+          targetNoteElem,
+          { x: elemX },
+          { x: targetPosItem.x },
+          centerY,
+          scale
+        );
+        if (glissGeom) {
+          glissandoPaths.push(
+            <g
+              key={`gliss-${element.id}-${element.glissando.targetNoteId}`}
+              className="glissando-spanner"
+              data-testid="glissando-spanner"
+            >
+              <path
+                d={glissGeom.path}
+                fill="none"
+                stroke="#0f172a"
+                strokeWidth={1.5 * scale}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                data-testid="glissando-line"
+              />
+              {glissGeom.text !== 'none' && (
+                <text
+                  x={glissGeom.midX}
+                  y={glissGeom.midY}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  transform={`rotate(${glissGeom.angleDeg}, ${glissGeom.midX}, ${glissGeom.midY})`}
+                  fontStyle="italic"
+                  fontFamily="serif"
+                  fontSize={11 * scale}
+                  fill="#0f172a"
+                  stroke="#ffffff"
+                  strokeWidth={3 * scale}
+                  paintOrder="stroke fill"
+                  data-testid="glissando-text"
+                >
+                  {glissGeom.text}
+                </text>
+              )}
+            </g>
+          );
+        }
+      }
+    }
+  });
+
+  // Ottava Spanners (TASK-31)
+  const ottavaPaths: React.ReactNode[] = [];
+  const elementsForOttavas = fullStaffElements || effectiveStaff.elements;
+  const staffOttavas = resolveStaffOttavas(elementsForOttavas);
+
+  staffOttavas.forEach((ottava) => {
+    const geom = computeOttavaGeometry(ottava, positionedElements, centerY, scale, {
+      systemWidth: width,
+      systemStartX: STAFF_START_X * scale,
+      fullStaffElements,
+    });
+
+    if (geom) {
+      ottavaPaths.push(
+        <g
+          key={`ottava-${ottava.sourceNote.id}-${ottava.targetNoteId}-${geom.spannerType}`}
+          data-testid="ottava-spanner"
+          data-ottava-type={geom.type}
+          data-spanner-type={geom.spannerType}
+        >
+          <text
+            x={geom.labelX}
+            y={geom.labelY}
+            className="font-serif italic font-semibold text-[13px] fill-slate-900 select-none"
+            style={{ fontSize: `${13 * scale}px` }}
+            data-testid="ottava-label"
+          >
+            {geom.label}
+          </text>
+          {geom.dashedLinePath && (
+            <path
+              d={geom.dashedLinePath}
+              fill="none"
+              stroke="#0f172a"
+              strokeWidth={1.4 * scale}
+              strokeDasharray="5 4"
+              data-testid="ottava-line"
+            />
+          )}
+          {geom.hasHook && geom.hookPath && (
+            <path
+              d={geom.hookPath}
+              fill="none"
+              stroke="#0f172a"
+              strokeWidth={1.4 * scale}
+              data-testid="ottava-hook"
+            />
+          )}
+        </g>
+      );
+    }
+  });
+
   // Substaff Multi-Note Phrase Slurs & Hairpins (Voice 2)
   const substaffSlurPaths: React.ReactNode[] = [];
   const substaffHairpinPaths: React.ReactNode[] = [];
+  const substaffGlissandoPaths: React.ReactNode[] = [];
+  const substaffOttavaPaths: React.ReactNode[] = [];
   if (substaffElements && substaffPositioned.length > 0) {
     substaffPositioned.forEach(({ element }) => {
       if (element.type === 'note' && element.slur) {
@@ -521,6 +642,111 @@ export const StaffSvg: React.FC<Props> = ({
             );
           }
         }
+      }
+    });
+
+    substaffPositioned.forEach(({ element, x: elemX }) => {
+      if (element.type === 'note' && element.glissando) {
+        const targetPosItem = substaffPositioned.find(
+          (p) => p.element.id === element.glissando?.targetNoteId && p.element.type === 'note'
+        );
+        const targetNoteElem = targetPosItem?.element as NoteElement | undefined;
+
+        if (targetNoteElem && targetPosItem) {
+          const glissGeom = computeGlissandoGeometry(
+            element,
+            targetNoteElem,
+            { x: elemX },
+            { x: targetPosItem.x },
+            centerY,
+            scale * 0.8
+          );
+          if (glissGeom) {
+            substaffGlissandoPaths.push(
+              <g
+                key={`sub-gliss-${element.id}-${element.glissando.targetNoteId}`}
+                className="glissando-spanner"
+                data-testid="glissando-spanner"
+              >
+                <path
+                  d={glissGeom.path}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth={1.5 * scale * 0.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  data-testid="glissando-line"
+                />
+                {glissGeom.text !== 'none' && (
+                  <text
+                    x={glissGeom.midX}
+                    y={glissGeom.midY}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    transform={`rotate(${glissGeom.angleDeg}, ${glissGeom.midX}, ${glissGeom.midY})`}
+                    fontStyle="italic"
+                    fontFamily="serif"
+                    fontSize={10 * scale * 0.8}
+                    fill="#0f172a"
+                    stroke="#ffffff"
+                    strokeWidth={3 * scale}
+                    paintOrder="stroke fill"
+                    data-testid="glissando-text"
+                  >
+                    {glissGeom.text}
+                  </text>
+                )}
+              </g>
+            );
+          }
+        }
+      }
+    });
+
+    const subOttavas = resolveStaffOttavas(substaffElements);
+    subOttavas.forEach((ottava) => {
+      const geom = computeOttavaGeometry(ottava, substaffPositioned, centerY, scale, {
+        systemWidth: width,
+        systemStartX: STAFF_START_X * scale,
+      });
+      if (geom) {
+        substaffOttavaPaths.push(
+          <g
+            key={`sub-ottava-${ottava.sourceNote.id}-${ottava.targetNoteId}-${geom.spannerType}`}
+            data-testid="ottava-spanner"
+            data-ottava-type={geom.type}
+            data-spanner-type={geom.spannerType}
+          >
+            <text
+              x={geom.labelX}
+              y={geom.labelY}
+              className="font-serif italic font-semibold text-[13px] fill-slate-900 select-none"
+              style={{ fontSize: `${13 * scale}px` }}
+              data-testid="ottava-label"
+            >
+              {geom.label}
+            </text>
+            {geom.dashedLinePath && (
+              <path
+                d={geom.dashedLinePath}
+                fill="none"
+                stroke="#0f172a"
+                strokeWidth={1.4 * scale}
+                strokeDasharray="5 4"
+                data-testid="ottava-line"
+              />
+            )}
+            {geom.hasHook && geom.hookPath && (
+              <path
+                d={geom.hookPath}
+                fill="none"
+                stroke="#0f172a"
+                strokeWidth={1.4 * scale}
+                data-testid="ottava-hook"
+              />
+            )}
+          </g>
+        );
       }
     });
   }
@@ -744,23 +970,35 @@ export const StaffSvg: React.FC<Props> = ({
     scale
   );
 
-  // Calculate staff line ending width.
-  // When a staff ends with a final barline and we are not actively placing elements after it,
-  // terminate the 5 staff lines cleanly at the outer boundary of the final barline.
+  // Calculate staff line ending width (TASK-36).
+  // - In Page View: the final system terminates flush with the system width (matching the thick stroke outer boundary).
+  // - In Ribbon View: extends cleanly 12px * scale past the outer edge of the thick stroke for balanced visual breathing room.
   let staffLineWidth = width;
   if (positionedElements && positionedElements.length > 0) {
     const lastElem = positionedElements[positionedElements.length - 1];
     if (lastElem.element.type === 'bar' && (lastElem.element as BarLineElement).barType === 'final') {
-      const finalBarEnd = Math.round(lastElem.x + 15 * scale);
-      staffLineWidth = isActive && cursorIndex >= positionedElements.length ? Math.max(finalBarEnd, width) : finalBarEnd;
+      if (isPageView) {
+        staffLineWidth = width;
+      } else {
+        const finalLayout = getFinalBarlineLayout(lastElem.x, lastElem.width, scale, false);
+        const finalBarEnd = finalLayout.ribbonStaffLineEnd;
+        staffLineWidth = isActive && cursorIndex >= positionedElements.length ? Math.max(finalBarEnd, width) : finalBarEnd;
+      }
     }
   }
+
+  // Calculate dynamic SVG bounding box height to accommodate all verse layers
+  const maxLyricY =
+    lyricsLayout.syllables.length > 0
+      ? Math.max(...lyricsLayout.syllables.map((s) => s.y)) + 16 * scale
+      : 0;
+  const staffSvgHeight = Math.max(centerY * 2, maxLyricY + 8 * scale);
 
   return (
     <svg
       ref={svgRef}
       width={width}
-      height={centerY * 2}
+      height={staffSvgHeight}
       className={`block cursor-crosshair overflow-visible ${isActive ? 'bg-blue-50/40 border-l-4 border-blue-600' : 'bg-white'}`}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
@@ -781,8 +1019,16 @@ export const StaffSvg: React.FC<Props> = ({
       {/* Initial Clef Label */}
       <text
         x={12}
-        y={effectiveStaff.initialClef === 'treble' ? centerY + 18 * scale : effectiveStaff.initialClef === 'bass' ? centerY + 7 * scale : centerY + 6 * scale}
-        fontSize={scale === 1 ? (effectiveStaff.initialClef === 'treble' ? '54' : '42') : `${(effectiveStaff.initialClef === 'treble' ? 54 : 42) * scale}px`}
+        y={
+          effectiveStaff.initialClef === 'treble'
+            ? centerY + 25 * scale
+            : effectiveStaff.initialClef === 'bass'
+            ? centerY + 12 * scale
+            : effectiveStaff.initialClef === 'tenor'
+            ? centerY + 5 * scale
+            : centerY + 15 * scale
+        }
+        fontSize={scale === 1 ? (effectiveStaff.initialClef === 'treble' ? '78' : '62') : `${(effectiveStaff.initialClef === 'treble' ? 78 : 62) * scale}px`}
         fontWeight="bold"
         fill="#334155"
         data-testid="initial-clef"
@@ -791,12 +1037,12 @@ export const StaffSvg: React.FC<Props> = ({
       </text>
 
       {/* Render Musical Elements (Voice 1 / Primary) */}
-      {positionedElements.map(({ element, x }, idx) => {
+      {positionedElements.map(({ element, x, width: itemWidth }, idx) => {
         if (hiddenIdsSet.has(element.id)) {
           return null;
         }
 
-        let elemWidth: number | undefined;
+        let elemWidth: number | undefined = itemWidth;
         if (element.type === 'volta') {
           for (let j = idx + 1; j < positionedElements.length; j++) {
             const nextElem = positionedElements[j];
@@ -875,6 +1121,7 @@ export const StaffSvg: React.FC<Props> = ({
               }
               voice={hasSubstaff ? 'voice-1' : undefined}
               hasResolvedTie={resolvedTieNoteIds.has(element.id)}
+              isPageView={isPageView}
             />
           </g>
         );
@@ -1050,6 +1297,14 @@ export const StaffSvg: React.FC<Props> = ({
       {hairpinPaths}
       {substaffHairpinPaths}
 
+      {/* Glissando Spanners (TASK-30) */}
+      {glissandoPaths}
+      {substaffGlissandoPaths}
+
+      {/* Ottava Spanners (TASK-31) */}
+      {ottavaPaths}
+      {substaffOttavaPaths}
+
       {/* Tuplet Brackets and Numbers */}
       {tupletElements}
       {substaffTupletElements}
@@ -1094,6 +1349,25 @@ export const StaffSvg: React.FC<Props> = ({
           className="fill-slate-800 select-none"
         >
           -
+        </text>
+      ))}
+
+      {/* Staff Lyrics Verse Numbers (TASK-34) */}
+      {lyricsLayout.verseNumbers?.map((vn, vnIdx) => (
+        <text
+          key={`lyric-vn-${vn.verseIndex}-${vnIdx}`}
+          data-testid="staff-lyric-verse-number"
+          data-verse={vn.verseIndex}
+          x={vn.x}
+          y={vn.y}
+          textAnchor="end"
+          fontFamily={fonts?.staffLyrics?.family || 'Times New Roman'}
+          fontSize={`${(fonts?.staffLyrics?.sizePt ?? 11) * scale}pt`}
+          fontWeight="bold"
+          fontStyle="normal"
+          className="fill-slate-800 select-none font-bold"
+        >
+          {vn.text}
         </text>
       ))}
 

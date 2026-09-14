@@ -28,6 +28,7 @@ export function getAudioContext(): AudioContext | null {
 }
 
 export function resetAudioContextForTesting(): void {
+  stopAllGlissando();
   audioCtx = null;
 }
 
@@ -82,6 +83,13 @@ function createNoiseTransient(
 // Tracking last pitch played by instrument for continuous legato portamento transitions
 const lastPitchByInstrument: Record<string, { midi: number; time: number }> = {};
 
+let activeGlissandoTimeouts: ReturnType<typeof setTimeout>[] = [];
+
+export function stopAllGlissando(): void {
+  activeGlissandoTimeouts.forEach((t) => clearTimeout(t));
+  activeGlissandoTimeouts = [];
+}
+
 export function resetLastPitchForTesting(): void {
   for (const key of Object.keys(lastPitchByInstrument)) {
     delete lastPitchByInstrument[key];
@@ -96,11 +104,26 @@ export function playTone(
   isSlurred: boolean = false,
   isSlurContinuation: boolean = false,
   isTrill: boolean = false,
-  prevMidi?: number
+  prevMidi?: number,
+  glissandoTargetMidi?: number,
+  glissandoStyle?: 'wavy' | 'straight',
+  isMordent?: boolean,
+  isTurn?: boolean,
+  isTenuto?: boolean
 ): void {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
+
+    const totalDurationSec = durationSec;
+    const isGlissandoHead =
+      glissandoTargetMidi !== undefined &&
+      glissandoTargetMidi !== midi &&
+      Math.abs(glissandoTargetMidi - midi) > 1;
+
+    if (isGlissandoHead) {
+      durationSec = Math.min(0.14, Math.max(0.06, totalDurationSec * 0.28));
+    }
 
     const now = ctx.currentTime;
     const vol = Math.max(0, Math.min(1, volume));
@@ -110,7 +133,7 @@ export function playTone(
       ? prevMidi
       : (lastPitchByInstrument[inst] && (now - lastPitchByInstrument[inst].time < 1.0) ? lastPitchByInstrument[inst].midi : undefined);
 
-    lastPitchByInstrument[inst] = { midi, time: now + durationSec };
+    lastPitchByInstrument[inst] = { midi, time: now + totalDurationSec };
 
     const masterGain = ctx.createGain();
     masterGain.connect(ctx.destination);
@@ -1064,7 +1087,55 @@ export function playTone(
       }
     }
 
-    const stopTime = isSlurred ? now + durationSec + 0.05 : now + durationSec;
+    if (isMordent) {
+      const lowerFreq = midiToFrequency(midi - 1);
+      const ratio = lowerFreq / fundamentalFreq;
+      toneOscillators.forEach(({ osc, baseFreq }) => {
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.setValueAtTime(baseFreq * ratio, now + 0.035);
+        osc.frequency.setValueAtTime(baseFreq, now + 0.07);
+      });
+    }
+
+    if (isTurn) {
+      const upperFreq = midiToFrequency(midi + 2);
+      const lowerFreq = midiToFrequency(midi - 1);
+      const step = Math.min(0.06, durationSec / 5);
+      toneOscillators.forEach(({ osc, baseFreq }) => {
+        osc.frequency.setValueAtTime(baseFreq * (upperFreq / fundamentalFreq), now);
+        osc.frequency.setValueAtTime(baseFreq, now + step);
+        osc.frequency.setValueAtTime(baseFreq * (lowerFreq / fundamentalFreq), now + step * 2);
+        osc.frequency.setValueAtTime(baseFreq, now + step * 3);
+      });
+    }
+
+    if (isGlissandoHead) {
+      const totalDiff = glissandoTargetMidi! - midi;
+      const totalSemitones = Math.abs(totalDiff);
+      const cascadeStartSec = durationSec;
+      const cascadeDurationSec = Math.max(0.08, totalDurationSec - cascadeStartSec);
+      const minStepSec = 0.038;
+      const maxSteps = Math.max(1, Math.floor(cascadeDurationSec / minStepSec));
+      const numSteps = Math.min(totalSemitones - 1, maxSteps);
+
+      if (numSteps > 0) {
+        const stepDt = cascadeDurationSec / (numSteps + 1);
+        const stepDur = Math.max(0.045, stepDt * 1.25);
+
+        for (let s = 1; s <= numSteps; s++) {
+          const stepPitch = Math.round(midi + s * (totalDiff / (numSteps + 1)));
+          const delayMs = (cascadeStartSec + (s - 1) * stepDt) * 1000;
+          const wavyMultiplier = glissandoStyle === 'wavy' ? (s % 2 === 0 ? 1.05 : 0.95) : 1.0;
+          const stepVol = Math.min(1.0, vol * 0.85 * wavyMultiplier);
+          const tId = setTimeout(() => {
+            playTone(stepPitch, stepDur, inst, stepVol, true, true);
+          }, delayMs);
+          activeGlissandoTimeouts.push(tId);
+        }
+      }
+    }
+
+    const stopTime = isSlurred || isTenuto ? now + durationSec + 0.05 : now + durationSec;
     oscillators.forEach((osc) => {
       osc.start(now);
       osc.stop(stopTime);
@@ -1081,9 +1152,10 @@ export function playPitchAudition(
   keyAccidentalsCount: number = 0,
   instrument?: InstrumentType | string,
   durationSec: number = 0.3,
-  volume: number = 1.0
+  volume: number = 1.0,
+  semitoneShift: number = 0
 ): void {
-  const midi = diatonicOffsetToMidi(diatonicOffset, clef, accidental, keyAccidentalsCount);
+  const midi = diatonicOffsetToMidi(diatonicOffset, clef, accidental, keyAccidentalsCount) + semitoneShift;
   playTone(midi, durationSec, instrument, volume);
 }
 

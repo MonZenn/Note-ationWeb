@@ -9,6 +9,7 @@ import {
   FontSetting,
   DurationValue,
   TiePair,
+  OttavaType,
 } from '../../types/score';
 
 export const KEY_SIGNATURE_OFFSETS: Record<ClefType, { sharps: number[]; flats: number[] }> = {
@@ -42,6 +43,8 @@ export const DEFAULT_PAGE_SETUP: PageSetupConfig = {
   staffScale: 0.75,
   staffSpacing: 45,
   systemSpacing: 55,
+  pageWidthMm: 215.9,
+  pageHeightMm: 279.4,
   margins: {
     topMm: 12,
     bottomMm: 12,
@@ -63,7 +66,7 @@ export const DEFAULT_SCORE_FONTS: ScoreFontsConfig = {
 };
 
 export function resolvePageSetup(
-  pageSetup?: Partial<PageSetupConfig> | { staffScale?: number; staffSpacing?: number; systemSpacing?: number; margins?: Partial<PageSetupConfig['margins']> }
+  pageSetup?: Partial<PageSetupConfig> | { staffScale?: number; staffSpacing?: number; systemSpacing?: number; pageWidthMm?: number; pageHeightMm?: number; margins?: Partial<PageSetupConfig['margins']> }
 ): PageSetupConfig {
   const p = pageSetup || {};
   const rawScale = p.staffScale ?? DEFAULT_PAGE_SETUP.staffScale;
@@ -71,12 +74,18 @@ export function resolvePageSetup(
     ? Math.max(0.25, Math.min(3.0, rawScale))
     : DEFAULT_PAGE_SETUP.staffScale;
 
+  const validatePositive = (val: unknown, defaultVal: number, min = 50, max = 2000): number => {
+    return typeof val === 'number' && Number.isFinite(val) && val > 0 ? Math.max(min, Math.min(max, val)) : defaultVal;
+  };
+
   const validateNonNegative = (val: unknown, defaultVal: number): number => {
     return typeof val === 'number' && Number.isFinite(val) && val >= 0 ? val : defaultVal;
   };
 
   const staffSpacing = validateNonNegative(p.staffSpacing, DEFAULT_PAGE_SETUP.staffSpacing);
   const systemSpacing = validateNonNegative(p.systemSpacing, DEFAULT_PAGE_SETUP.systemSpacing);
+  const pageWidthMm = validatePositive(p.pageWidthMm, DEFAULT_PAGE_SETUP.pageWidthMm ?? 215.9);
+  const pageHeightMm = validatePositive(p.pageHeightMm, DEFAULT_PAGE_SETUP.pageHeightMm ?? 279.4);
 
   const m = p.margins || {};
   const margins = {
@@ -90,7 +99,29 @@ export function resolvePageSetup(
     staffScale,
     staffSpacing,
     systemSpacing,
+    pageWidthMm,
+    pageHeightMm,
     margins,
+  };
+}
+
+export interface PageDimensions {
+  widthMm: number;
+  heightMm: number;
+  widthPx: number;
+  heightPx: number;
+}
+
+export function getPageDimensions(pageSetup?: Partial<PageSetupConfig>): PageDimensions {
+  const resolved = resolvePageSetup(pageSetup);
+  const widthMm = resolved.pageWidthMm ?? 215.9;
+  const heightMm = resolved.pageHeightMm ?? 279.4;
+
+  return {
+    widthMm,
+    heightMm,
+    widthPx: Math.round(widthMm * MM_TO_PX),
+    heightPx: Math.round(heightMm * MM_TO_PX),
   };
 }
 
@@ -116,6 +147,70 @@ export const STAFF_LINE_SPACING = 10;
 export const STAFF_HALF_SPACING = STAFF_LINE_SPACING / 2; // 5px
 export const STAFF_HEIGHT = STAFF_LINE_SPACING * 4; // 40px
 export const STAFF_START_X = 80;
+
+// Final Barline Engraving Constants (TASK-36)
+export const FINAL_BARLINE_THIN_WIDTH = 1.5;
+export const FINAL_BARLINE_GAP = 4;
+export const FINAL_BARLINE_THICK_WIDTH = 3.5;
+export const FINAL_BARLINE_RIBBON_EXTENSION = 12;
+
+export interface FinalBarlineLayout {
+  thinX: number;
+  thickX: number;
+  thinStrokeWidth: number;
+  thickStrokeWidth: number;
+  gap: number;
+  outerEdge: number;
+  ribbonStaffLineEnd: number;
+}
+
+/**
+ * Computes the geometry and layout coordinates for a final barline (thin stroke + 4px gap + thick stroke)
+ * and its staff line termination / extension.
+ *
+ * Gould / standard music engraving dimensions:
+ * - Thin line: strokeWidth = 1.5 * scale, x = barX
+ * - Inter-line gap: 4px * scale
+ * - Thick line: strokeWidth = 3.5 * scale, x = barX + (4 + 3.5 / 2) * scale
+ * - Outer edge of thick line: x = barX + (4 + 3.5) * scale
+ * - Ribbon View staff lines extend 12px * scale past the outer edge of the thick stroke.
+ */
+export function getFinalBarlineLayout(
+  x: number = 0,
+  width?: number,
+  scale: number = 1.0,
+  isFlushRight: boolean = false
+): FinalBarlineLayout {
+  const thinStrokeWidth = FINAL_BARLINE_THIN_WIDTH * scale;
+  const thickStrokeWidth = FINAL_BARLINE_THICK_WIDTH * scale;
+  const gap = FINAL_BARLINE_GAP * scale;
+
+  let thinX: number;
+  let thickX: number;
+  let outerEdge: number;
+
+  if (isFlushRight && width !== undefined) {
+    outerEdge = x + width;
+    thickX = outerEdge - thickStrokeWidth / 2;
+    thinX = thickX - thickStrokeWidth / 2 - gap;
+  } else {
+    thinX = x + 8 * scale;
+    thickX = thinX + gap + thickStrokeWidth / 2;
+    outerEdge = thickX + thickStrokeWidth / 2;
+  }
+
+  const ribbonStaffLineEnd = Math.round(outerEdge + FINAL_BARLINE_RIBBON_EXTENSION * scale);
+
+  return {
+    thinX,
+    thickX,
+    thinStrokeWidth,
+    thickStrokeWidth,
+    gap,
+    outerEdge,
+    ribbonStaffLineEnd,
+  };
+}
 
 export function calculatePitchY(centerLineY: number, diatonicOffset: number, scale: number = 1.0): number {
   return centerLineY - (diatonicOffset * (STAFF_HALF_SPACING * scale));
@@ -205,8 +300,8 @@ export function getElementWidth(element: MusicElement, lyricToken?: string, scal
       break;
   }
 
-  // Dynamic layout width expansion for lyrics on notes and rests
-  if (element.type === 'note' || element.type === 'rest') {
+  // Dynamic layout width expansion for lyrics on notes (rests never have lyrics)
+  if (element.type === 'note') {
     const lyric = lyricToken !== undefined ? lyricToken : element.lyric;
     if (lyric && lyric !== '_') {
       const textOnly = lyric === '-' ? '-' : lyric.endsWith('-') ? lyric.slice(0, -1) : lyric;
@@ -519,6 +614,108 @@ export function computeTieGeometry(
   }
 
   return null;
+}
+
+export interface GlissandoGeometry {
+  path: string;
+  straightPath: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  midX: number;
+  midY: number;
+  angleDeg: number;
+  text: string;
+}
+
+export function computeGlissandoGeometry(
+  sourceNote: NoteElement,
+  targetNote: NoteElement,
+  sourcePos: { x: number } | number,
+  targetPos: { x: number } | number,
+  centerY: number = 40,
+  scale: number = 1.0
+): GlissandoGeometry | null {
+  if (!sourceNote.pitches || sourceNote.pitches.length === 0) return null;
+  if (!targetNote.pitches || targetNote.pitches.length === 0) return null;
+
+  const sX = typeof sourcePos === 'number' ? sourcePos : sourcePos.x;
+  const tX = typeof targetPos === 'number' ? targetPos : targetPos.x;
+
+  const sourcePitch = sourceNote.pitches[0];
+  const targetPitch = targetNote.pitches[0];
+
+  const y1 = calculatePitchY(centerY, sourcePitch.diatonicOffset, scale);
+  const y2 = calculatePitchY(centerY, targetPitch.diatonicOffset, scale);
+
+  const dotOffset = (sourceNote.dots || 0) * 8 * scale;
+  const x1 = sX + (12 * scale) + dotOffset;
+
+  const hasAccidental = Boolean(targetPitch.accidental);
+  const accOffset = hasAccidental ? 14 * scale : 4 * scale;
+  let x2 = tX - accOffset;
+
+  if (x2 <= x1) {
+    x2 = x1 + 10 * scale;
+  }
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const angleRad = Math.atan2(dy, dx);
+  const angleDeg = (angleRad * 180) / Math.PI;
+
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+
+  const straightPath = `M ${x1.toFixed(1)} ${y1.toFixed(1)} L ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+
+  const spanner = sourceNote.glissando;
+  const style = spanner?.style || 'wavy';
+  const text = spanner?.text || 'gliss.';
+
+  let path = straightPath;
+
+  if (style === 'wavy') {
+    const dist = Math.hypot(dx, dy);
+    const waveLength = Math.max(6 * scale, 8 * scale);
+    const numCycles = Math.max(2, Math.floor(dist / waveLength));
+    const stepDist = dist / (numCycles * 2);
+    const amp = 2.8 * scale;
+
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const nx = -uy;
+    const ny = ux;
+
+    let wavyD = `M ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+    const totalHalfSteps = numCycles * 2;
+    for (let i = 1; i <= totalHalfSteps; i++) {
+      if (i === totalHalfSteps) {
+        wavyD += ` L ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+      } else {
+        const curDist = i * stepDist;
+        const sign = i % 2 === 1 ? 1 : -1;
+        const px = x1 + curDist * ux + sign * amp * nx;
+        const py = y1 + curDist * uy + sign * amp * ny;
+        wavyD += ` L ${px.toFixed(1)} ${py.toFixed(1)}`;
+      }
+    }
+    path = wavyD;
+  }
+
+  return {
+    path,
+    straightPath,
+    x1,
+    y1,
+    x2,
+    y2,
+    midX,
+    midY,
+    angleDeg,
+    text,
+  };
 }
 
 export function computeSlurGeometry(
@@ -1183,6 +1380,7 @@ export interface LyricSyllableLayout {
   text: string;
   x: number;
   y: number;
+  verseNumber?: string;
 }
 
 export interface LyricHyphenLayout {
@@ -1191,9 +1389,17 @@ export interface LyricHyphenLayout {
   y: number;
 }
 
+export interface LyricVerseNumberLayout {
+  verseIndex: number;
+  text: string;
+  x: number;
+  y: number;
+}
+
 export interface StaffLyricsLayout {
   syllables: LyricSyllableLayout[];
   hyphens: LyricHyphenLayout[];
+  verseNumbers?: LyricVerseNumberLayout[];
 }
 
 export function getElementVisualCenterX(element: MusicElement, elemX: number): number {
@@ -1219,7 +1425,7 @@ export function computeStaffLyricsLayout(
     verses && verses.length > 0 ? verses : lyrics && lyrics.length > 0 ? [lyrics] : [];
 
   if (versesToProcess.length === 0 || elements.length === 0) {
-    return { syllables: [], hyphens: [] };
+    return { syllables: [], hyphens: [], verseNumbers: [] };
   }
 
   // Calculate dynamic vertical baseline
@@ -1238,25 +1444,26 @@ export function computeStaffLyricsLayout(
     lowestDynamicY !== -Infinity ? lowestDynamicY + 16 * scale : -Infinity
   );
 
-  const rhythmElements = elements.filter(
-    (e): e is NoteElement | RestElement => e.type === 'note' || e.type === 'rest'
+  const noteElementsForLyrics = elements.filter(
+    (e): e is NoteElement => e.type === 'note'
   );
 
-  const globalRhythmElements = (fullStaffElements || elements).filter(
-    (e): e is NoteElement | RestElement => e.type === 'note' || e.type === 'rest'
+  const globalNoteElements = (fullStaffElements || elements).filter(
+    (e): e is NoteElement => e.type === 'note'
   );
 
   const syllables: LyricSyllableLayout[] = [];
   const hyphens: LyricHyphenLayout[] = [];
+  const verseNumbers: LyricVerseNumberLayout[] = [];
 
   for (let vIdx = 0; vIdx < versesToProcess.length; vIdx++) {
-    const verseBaselineY = baseBaselineY + vIdx * (15 * scale);
+    const verseBaselineY = baseBaselineY + vIdx * (16 * scale);
     const tokens = versesToProcess[vIdx] || [];
     let pendingHyphen: { midX: number; verseIndex: number; nextExpectedId?: string } | null = null;
 
-    for (let i = 0; i < rhythmElements.length; i++) {
-      const elem = rhythmElements[i];
-      const globalIdx = globalRhythmElements.findIndex((ge) => ge.id === elem.id);
+    for (let i = 0; i < noteElementsForLyrics.length; i++) {
+      const elem = noteElementsForLyrics[i];
+      const globalIdx = globalNoteElements.findIndex((ge) => ge.id === elem.id);
       const tokenIdx = globalIdx !== -1 ? globalIdx : i;
       const token = tokenIdx < tokens.length ? tokens[tokenIdx] : undefined;
 
@@ -1290,8 +1497,8 @@ export function computeStaffLyricsLayout(
       } else if (token.endsWith('-')) {
         text = token.slice(0, -1);
         const nextGlobalElem =
-          globalIdx !== -1 && globalIdx + 1 < globalRhythmElements.length
-            ? globalRhythmElements[globalIdx + 1]
+          globalIdx !== -1 && globalIdx + 1 < globalNoteElements.length
+            ? globalNoteElements[globalIdx + 1]
             : undefined;
         pendingHyphen = {
           midX,
@@ -1312,7 +1519,26 @@ export function computeStaffLyricsLayout(
     }
   }
 
-  return { syllables, hyphens };
+  // Generate verse number callouts placed before the first syllable of each verse per system
+  if (versesToProcess.length > 1) {
+    for (let vIdx = 0; vIdx < versesToProcess.length; vIdx++) {
+      const firstSyl = syllables.find((s) => s.verseIndex === vIdx);
+      if (firstSyl) {
+        const numText = `${vIdx + 1}.`;
+        firstSyl.verseNumber = numText;
+        const textHalfWidth = Math.max(8 * scale, (firstSyl.text.length * 3.5 + 4) * scale);
+        const vnX = firstSyl.x - textHalfWidth - 4 * scale;
+        verseNumbers.push({
+          verseIndex: vIdx,
+          text: numText,
+          x: vnX,
+          y: firstSyl.y,
+        });
+      }
+    }
+  }
+
+  return { syllables, hyphens, verseNumbers };
 }
 
 export function getActiveKeyAndClefAtMeasure(
@@ -1664,6 +1890,250 @@ export function computeTupletGroups(
 }
 
 export { computeScoreMeasureNumbers, type MeasureNumberInfo } from './measureUtils';
+
+export interface OttavaSpannerEntry {
+  sourceNote: NoteElement;
+  targetNoteId: string;
+  type: OttavaType;
+}
+
+export interface OttavaGeometry {
+  type: OttavaType;
+  label: string;
+  labelX: number;
+  labelY: number;
+  lineStartX: number;
+  lineEndX: number;
+  lineY: number;
+  hasHook: boolean;
+  hookStartX: number;
+  hookStartY: number;
+  hookEndX: number;
+  hookEndY: number;
+  dashedLinePath?: string;
+  hookPath?: string;
+  isContinuation: boolean;
+  spannerType: 'full' | 'outgoing' | 'incoming' | 'mid-system';
+}
+
+export function resolveStaffOttavas(elements: MusicElement[]): OttavaSpannerEntry[] {
+  const list: OttavaSpannerEntry[] = [];
+  elements.forEach((elem) => {
+    if (elem.type === 'note' && elem.ottava && elem.ottava.targetNoteId) {
+      list.push({
+        sourceNote: elem,
+        targetNoteId: elem.ottava.targetNoteId,
+        type: elem.ottava.type,
+      });
+    }
+  });
+  return list;
+}
+
+export function computeOttavaGeometry(
+  ottava: OttavaSpannerEntry,
+  positionedElements: { element: MusicElement; x: number; width?: number }[],
+  centerY: number,
+  scale: number = 1.0,
+  options?: {
+    systemWidth?: number;
+    systemStartX?: number;
+    fullStaffElements?: MusicElement[];
+  }
+): OttavaGeometry | null {
+  if (!positionedElements || positionedElements.length === 0) return null;
+
+  const sourcePos = positionedElements.find((p) => p.element.id === ottava.sourceNote.id);
+  const targetPos = positionedElements.find((p) => p.element.id === ottava.targetNoteId);
+
+  let spannerType: 'full' | 'outgoing' | 'incoming' | 'mid-system' | null = null;
+  let isContinuation = false;
+  let hasHook = true;
+
+  const fullElements = options?.fullStaffElements;
+
+  if (sourcePos && targetPos) {
+    spannerType = 'full';
+    isContinuation = false;
+    hasHook = true;
+  } else if (sourcePos && !targetPos) {
+    spannerType = 'outgoing';
+    isContinuation = false;
+    hasHook = false;
+  } else if (!sourcePos && targetPos) {
+    if (fullElements) {
+      const sourceIdx = fullElements.findIndex((e) => e.id === ottava.sourceNote.id);
+      const firstSysIdx = fullElements.findIndex((e) => e.id === positionedElements[0].element.id);
+      if (sourceIdx !== -1 && firstSysIdx !== -1 && sourceIdx < firstSysIdx) {
+        spannerType = 'incoming';
+        isContinuation = true;
+        hasHook = true;
+      }
+    } else {
+      spannerType = 'incoming';
+      isContinuation = true;
+      hasHook = true;
+    }
+  } else if (!sourcePos && !targetPos) {
+    if (fullElements) {
+      const sourceIdx = fullElements.findIndex((e) => e.id === ottava.sourceNote.id);
+      const targetIdx = fullElements.findIndex((e) => e.id === ottava.targetNoteId);
+      const firstSysIdx = fullElements.findIndex((e) => e.id === positionedElements[0].element.id);
+      const lastSysIdx = fullElements.findIndex((e) => e.id === positionedElements[positionedElements.length - 1].element.id);
+
+      if (sourceIdx !== -1 && targetIdx !== -1 && firstSysIdx !== -1 && lastSysIdx !== -1) {
+        if (sourceIdx < firstSysIdx && targetIdx > lastSysIdx) {
+          spannerType = 'mid-system';
+          isContinuation = true;
+          hasHook = false;
+        }
+      }
+    }
+  }
+
+  if (!spannerType) {
+    return null;
+  }
+
+  const defaultStartX = options?.systemStartX ?? (STAFF_START_X * scale);
+  const defaultSystemWidth = options?.systemWidth ?? 500;
+
+  let startX: number;
+  let endX: number;
+
+  if (spannerType === 'full') {
+    startX = sourcePos!.x;
+    endX = targetPos!.x + (targetPos!.width ?? 16 * scale);
+  } else if (spannerType === 'outgoing') {
+    startX = sourcePos!.x;
+    endX = (options?.systemWidth ?? (sourcePos!.x + 100 * scale)) - 4 * scale;
+  } else if (spannerType === 'incoming') {
+    startX = defaultStartX;
+    endX = targetPos!.x + (targetPos!.width ?? 16 * scale);
+  } else {
+    startX = defaultStartX;
+    endX = defaultSystemWidth - 4 * scale;
+  }
+
+  let rangeNotes: NoteElement[] = [];
+  if (spannerType === 'full') {
+    const sIdx = positionedElements.indexOf(sourcePos!);
+    const tIdx = positionedElements.indexOf(targetPos!);
+    const from = Math.min(sIdx, tIdx);
+    const to = Math.max(sIdx, tIdx);
+    rangeNotes = positionedElements
+      .slice(from, to + 1)
+      .filter((p): p is { element: NoteElement; x: number; width?: number } => p.element.type === 'note')
+      .map((p) => p.element);
+  } else if (spannerType === 'outgoing') {
+    const sIdx = positionedElements.indexOf(sourcePos!);
+    rangeNotes = positionedElements
+      .slice(sIdx)
+      .filter((p): p is { element: NoteElement; x: number; width?: number } => p.element.type === 'note')
+      .map((p) => p.element);
+  } else if (spannerType === 'incoming') {
+    const tIdx = positionedElements.indexOf(targetPos!);
+    rangeNotes = positionedElements
+      .slice(0, tIdx + 1)
+      .filter((p): p is { element: NoteElement; x: number; width?: number } => p.element.type === 'note')
+      .map((p) => p.element);
+  } else {
+    rangeNotes = positionedElements
+      .filter((p): p is { element: NoteElement; x: number; width?: number } => p.element.type === 'note')
+      .map((p) => p.element);
+  }
+
+  const isAbove = ottava.type === '8va' || ottava.type === '15ma';
+  const staffTopY = centerY - 20 * scale;
+  const staffBottomY = centerY + 20 * scale;
+
+  let lineY: number;
+  if (isAbove) {
+    let highestY = staffTopY;
+    rangeNotes.forEach((note) => {
+      note.pitches.forEach((p) => {
+        const py = calculatePitchY(centerY, p.diatonicOffset, scale);
+        highestY = Math.min(highestY, py);
+        if (p.diatonicOffset >= 6) {
+          const highestLedger = Math.floor(p.diatonicOffset / 2) * 2;
+          highestY = Math.min(highestY, calculatePitchY(centerY, highestLedger, scale));
+        }
+      });
+      const stemDir = getEffectiveStemDirection(note);
+      if (stemDir === 'up') {
+        const lowestOffset = Math.min(...note.pitches.map((p) => p.diatonicOffset));
+        const rootY = calculatePitchY(centerY, lowestOffset, scale);
+        const stemLen = getNoteStemLength(note.duration, undefined, scale);
+        highestY = Math.min(highestY, rootY - stemLen);
+      }
+    });
+    lineY = highestY - 14 * scale;
+  } else {
+    let lowestY = staffBottomY;
+    rangeNotes.forEach((note) => {
+      note.pitches.forEach((p) => {
+        const py = calculatePitchY(centerY, p.diatonicOffset, scale);
+        lowestY = Math.max(lowestY, py);
+        if (p.diatonicOffset <= -6) {
+          const lowestLedger = Math.ceil(p.diatonicOffset / 2) * 2;
+          lowestY = Math.max(lowestY, calculatePitchY(centerY, lowestLedger, scale));
+        }
+      });
+      const stemDir = getEffectiveStemDirection(note);
+      if (stemDir === 'down') {
+        const highestOffset = Math.max(...note.pitches.map((p) => p.diatonicOffset));
+        const rootY = calculatePitchY(centerY, highestOffset, scale);
+        const stemLen = getNoteStemLength(note.duration, undefined, scale);
+        lowestY = Math.max(lowestY, rootY + stemLen);
+      }
+    });
+    lineY = lowestY + 14 * scale;
+  }
+
+  const rawLabel = ottava.type;
+  const label = isContinuation ? `(${rawLabel})` : rawLabel;
+  const labelX = startX;
+  const labelY = lineY + 4 * scale;
+
+  const approxTextWidth = (label.length * 6.5 + 4) * scale;
+  const lineStartX = Math.min(endX, labelX + approxTextWidth + 4 * scale);
+  const lineEndX = endX;
+
+  const hookLength = 7 * scale;
+  const hookStartX = lineEndX;
+  const hookStartY = lineY;
+  const hookEndX = lineEndX;
+  const hookEndY = isAbove ? lineY + hookLength : lineY - hookLength;
+
+  let dashedLinePath: string | undefined;
+  if (lineStartX < lineEndX) {
+    dashedLinePath = `M ${lineStartX.toFixed(1)} ${lineY.toFixed(1)} L ${lineEndX.toFixed(1)} ${lineY.toFixed(1)}`;
+  }
+
+  let hookPath: string | undefined;
+  if (hasHook) {
+    hookPath = `M ${hookStartX.toFixed(1)} ${hookStartY.toFixed(1)} L ${hookEndX.toFixed(1)} ${hookEndY.toFixed(1)}`;
+  }
+
+  return {
+    type: ottava.type,
+    label,
+    labelX,
+    labelY,
+    lineStartX,
+    lineEndX,
+    lineY,
+    hasHook,
+    hookStartX,
+    hookStartY,
+    hookEndX,
+    hookEndY,
+    dashedLinePath,
+    hookPath,
+    isContinuation,
+    spannerType,
+  };
+}
 
 
 

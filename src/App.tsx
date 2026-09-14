@@ -44,6 +44,7 @@ export default function App() {
   const [isInfoOpen, setIsInfoOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState<boolean>(false);
+  const appliedLyricsBatchRef = useRef<boolean>(false);
   const [isStaffManagerOpen, setIsStaffManagerOpen] = useState<boolean>(false);
   const [isClefOpen, setIsClefOpen] = useState<boolean>(false);
   const [isKeyOpen, setIsKeyOpen] = useState<boolean>(false);
@@ -337,16 +338,47 @@ export default function App() {
         isOpen={isLyricsOpen}
         onClose={() => setIsLyricsOpen(false)}
         initialLyrics={state.present.staves[state.activeStaffIndex]?.lyrics || []}
+        initialVerses={
+          state.present.staves[state.activeStaffIndex]?.verses ||
+          (state.present.staves[state.activeStaffIndex]?.lyrics
+            ? [state.present.staves[state.activeStaffIndex].lyrics]
+            : [[]])
+        }
+        initialLyricParts={state.present.staves[state.activeStaffIndex]?.lyricParts}
         totalRhythmSlots={
           state.present.staves[state.activeStaffIndex]?.elements.filter(
-            (e) => e.type === 'note' || e.type === 'rest'
+            (e) => e.type === 'note'
           ).length || 0
         }
         onSave={(syllables) => {
+          if (appliedLyricsBatchRef.current) return;
           dispatch({
             type: 'SET_STAFF_LYRICS',
             staffIndex: state.activeStaffIndex,
             lyrics: syllables,
+          });
+        }}
+        onSaveVerses={(verses) => {
+          if (appliedLyricsBatchRef.current) return;
+          appliedLyricsBatchRef.current = true;
+          dispatch({
+            type: 'SET_STAFF_VERSES',
+            staffIndex: state.activeStaffIndex,
+            verses,
+          });
+          queueMicrotask(() => {
+            appliedLyricsBatchRef.current = false;
+          });
+        }}
+        onSaveLyricParts={(parts) => {
+          appliedLyricsBatchRef.current = true;
+          dispatch({
+            type: 'SET_STAFF_LYRIC_PARTS',
+            staffIndex: state.activeStaffIndex,
+            parts,
+          });
+          queueMicrotask(() => {
+            appliedLyricsBatchRef.current = false;
           });
         }}
       />

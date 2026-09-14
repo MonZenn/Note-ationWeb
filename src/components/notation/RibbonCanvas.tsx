@@ -132,8 +132,13 @@ export const RibbonCanvas: React.FC<Props> = ({
         });
       }
 
-      // Vertical visibility of the staff being played
-      const playingRow = staffRowRefs.current[playbackCursor.staffIndex];
+      // Vertical visibility of the staff being played (anchors to parent staff if playing on a substaff)
+      const playingStaff = score.staves[playbackCursor.staffIndex];
+      const targetStaffIndex = playingStaff?.substaffOf
+        ? score.staves.findIndex((s) => s.id === playingStaff.substaffOf)
+        : playbackCursor.staffIndex;
+      const effectiveIndex = targetStaffIndex !== -1 ? targetStaffIndex : playbackCursor.staffIndex;
+      const playingRow = staffRowRefs.current[effectiveIndex];
       if (playingRow) {
         const rowTop = playingRow.offsetTop;
         const rowBottom = rowTop + playingRow.offsetHeight;

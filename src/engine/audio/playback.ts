@@ -1,7 +1,7 @@
-import { Score, MusicElement, FlowMarkType, InstrumentType, DynamicMark, NoteElement, TempoElement, TextElement } from '../../types/score';
+import { Score, MusicElement, FlowMarkType, InstrumentType, DynamicMark, NoteElement, TempoElement, TextElement, GlissandoStyle, OttavaType, TimeSignatureElement } from '../../types/score';
 import { diatonicOffsetToMidi } from '../../utils/pitchUtils';
 import { parseChordToMidi } from '../../utils/chordUtils';
-import { playTone } from './synth';
+import { playTone, stopAllGlissando } from './synth';
 
 export const DYNAMIC_GAINS: Record<DynamicMark, number> = {
   ppp: 0.20,
@@ -15,6 +15,126 @@ export const DYNAMIC_GAINS: Record<DynamicMark, number> = {
   sfz: 1.00,
   fz: 0.90,
 };
+
+export const BOWED_STRING_INSTRUMENTS: Set<InstrumentType> = new Set(['violin', 'viola', 'cello']);
+
+export function getOttavaSemitoneShift(type: OttavaType): number {
+  switch (type) {
+    case '8va': return 12;
+    case '8vb': return -12;
+    case '15ma': return 24;
+    case '15mb': return -24;
+  }
+}
+
+export function isBowedStringInstrument(inst?: InstrumentType | string): boolean {
+  if (!inst) return false;
+  const lower = inst.toLowerCase().trim();
+  return lower === 'violin' || lower === 'viola' || lower === 'cello';
+}
+
+export function parseDynamicGainFromText(text: string): number | null {
+  if (!text) return null;
+  const raw = text.trim();
+  const lower = raw.toLowerCase();
+
+  // 1. Exact match with standard dynamic mark
+  if (lower in DYNAMIC_GAINS) {
+    return DYNAMIC_GAINS[lower as DynamicMark];
+  }
+
+  // 2. Dynamic words
+  if (lower === 'forte') return DYNAMIC_GAINS.f;
+  if (lower === 'piano') return DYNAMIC_GAINS.p;
+  if (lower === 'pianissimo') return DYNAMIC_GAINS.pp;
+  if (lower === 'fortissimo') return DYNAMIC_GAINS.ff;
+  if (lower === 'mezzo forte' || lower === 'mezzo-forte') return DYNAMIC_GAINS.mf;
+  if (lower === 'mezzo piano' || lower === 'mezzo-piano') return DYNAMIC_GAINS.mp;
+  if (lower === 'pianississimo') return DYNAMIC_GAINS.ppp;
+  if (lower === 'fortississimo') return DYNAMIC_GAINS.fff;
+  if (lower === 'sforzando' || lower === 'sforzato') return DYNAMIC_GAINS.sfz;
+
+  // 3. Isolated tokens in text (e.g. "subito f", "molto p", "meno f")
+  const tokens = lower.split(/[\s,.;:]+/);
+  for (const t of tokens) {
+    if (t in DYNAMIC_GAINS) {
+      return DYNAMIC_GAINS[t as DynamicMark];
+    }
+  }
+
+  return null;
+}
+
+export function parseTempoChangeFromText(
+  text: string,
+  currentQuarterSec: number,
+  baseScoreQuarterSec: number
+): number | null {
+  if (!text) return null;
+  const raw = text.trim();
+  const lower = raw.toLowerCase();
+
+  // 1. Explicit BPM / MM format
+  const bpmMatch = raw.match(/(?:bpm|tempo|mm|q|♩|\quarter)?\s*[=:]\s*(\d+(\.\d+)?)/i);
+  if (bpmMatch && bpmMatch[1]) {
+    const bpm = parseFloat(bpmMatch[1]);
+    if (bpm >= 20 && bpm <= 400) {
+      return 60 / bpm;
+    }
+  }
+
+  // 2. Relative tempo shifts
+  if (/\b(rit\.?|ritardando|rall\.?|rallentando|allargando|slargando)\b/i.test(lower)) {
+    return currentQuarterSec * 1.25;
+  }
+
+  if (/\b(accel\.?|accelerando|affrettando|stringendo|piu mosso)\b/i.test(lower)) {
+    return currentQuarterSec * 0.80;
+  }
+
+  if (/\b(a tempo|tempo primo|tempo i|in tempo)\b/i.test(lower)) {
+    return baseScoreQuarterSec;
+  }
+
+  // 3. Italian tempo words
+  const italianTempos: Record<string, number> = {
+    grave: 40,
+    largo: 46,
+    lento: 52,
+    larghetto: 60,
+    adagio: 66,
+    adagietto: 72,
+    andante: 76,
+    andantino: 84,
+    moderato: 96,
+    allegretto: 112,
+    allegro: 128,
+    vivace: 144,
+    presto: 168,
+    prestissimo: 200,
+  };
+
+  for (const [term, bpm] of Object.entries(italianTempos)) {
+    const termRegex = new RegExp(`\\b${term}\\b`, 'i');
+    if (termRegex.test(lower)) {
+      return 60 / bpm;
+    }
+  }
+
+  return null;
+}
+
+export function parseTechniqueFromText(text: string): 'pizz' | 'arco' | null {
+  if (!text) return null;
+  const lower = text.trim().toLowerCase();
+  if (/\b(pizz\.?|pizzicato)\b/i.test(lower)) {
+    return 'pizz';
+  }
+  if (/\b(arco|coll'arco|col arco)\b/i.test(lower)) {
+    return 'arco';
+  }
+  return null;
+}
 
 export interface PlaybackEvent {
   staffIndex: number;
@@ -31,6 +151,11 @@ export interface PlaybackEvent {
   measureIndex?: number;
   prevMidiPitches?: number[];
   isChordSymbol?: boolean;
+  glissandoTargetMidi?: number;
+  glissandoStyle?: GlissandoStyle;
+  isTenuto?: boolean;
+  isMordent?: boolean;
+  isTurn?: boolean;
 }
 
 export function computeQuarterDurationSec(tempo: TempoElement): number {
@@ -331,6 +456,7 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
   }
 
   const measureTempoChanges: MeasureTempoChange[][] = [];
+  let runningQSec = initialQuarterDurationSec;
   for (let m = 0; m < numMeasures; m++) {
     const changes: MeasureTempoChange[] = [];
     for (const sm of staffMeasures) {
@@ -340,9 +466,23 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
       for (const item of mData.elements) {
         if (item.element.type === 'tempo') {
           const qSec = computeQuarterDurationSec(item.element);
+          runningQSec = qSec;
           const existing = changes.find((c) => Math.abs(c.beatOffset - beatOffset) < 0.001);
           if (!existing) {
             changes.push({ beatOffset, quarterDurationSec: qSec });
+          } else {
+            existing.quarterDurationSec = qSec;
+          }
+        } else if (item.element.type === 'text') {
+          const textQSec = parseTempoChangeFromText(item.element.text, runningQSec, initialQuarterDurationSec);
+          if (textQSec !== null) {
+            runningQSec = textQSec;
+            const existing = changes.find((c) => Math.abs(c.beatOffset - beatOffset) < 0.001);
+            if (!existing) {
+              changes.push({ beatOffset, quarterDurationSec: textQSec });
+            } else {
+              existing.quarterDurationSec = textQSec;
+            }
           }
         } else {
           beatOffset += getElementMetricBeats(item.element);
@@ -361,37 +501,144 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
     initialQuarterDurationSec = measureTempoChanges[0][0].quarterDurationSec;
   }
 
+  // Determine active time signature capacity across measures (default 4/4 = 4 quarter beats)
+  let activeTimeCapacity = 4.0;
+  for (const staff of score.staves) {
+    const timeElem = staff.elements.find((el): el is TimeSignatureElement => el.type === 'time');
+    if (timeElem) {
+      activeTimeCapacity = (timeElem.numerator / timeElem.denominator) * 4;
+      break;
+    }
+  }
+
+  // Precompute metric duration in seconds for each measure index [0 ... numMeasures - 1]
+  const measureDurationsSec: number[] = [];
+  let prevailingQuarterSec = initialQuarterDurationSec;
+
+  for (let m = 0; m < numMeasures; m++) {
+    // Check if any staff defines a time signature in measure m
+    for (const sm of staffMeasures) {
+      const mData = sm[m];
+      if (mData) {
+        for (const item of mData.elements) {
+          if (item.element.type === 'time') {
+            activeTimeCapacity = (item.element.numerator / item.element.denominator) * 4;
+          }
+        }
+      }
+    }
+
+    // Compute maximum note/rest beats and actual note duration in seconds across all staves in this measure
+    let maxStaffBeats = 0;
+    let maxStaffDurationSec = 0;
+
+    for (const sm of staffMeasures) {
+      const mData = sm[m];
+      if (!mData) continue;
+      let sBeats = 0;
+      let sDurSec = 0;
+      let sQSec = prevailingQuarterSec;
+      const mChanges = measureTempoChanges[m] || [];
+
+      for (const item of mData.elements) {
+        const applicableChanges = mChanges.filter((c) => c.beatOffset <= sBeats + 0.001);
+        if (applicableChanges.length > 0) {
+          sQSec = applicableChanges[applicableChanges.length - 1].quarterDurationSec;
+        }
+
+        if (item.element.type === 'note' || item.element.type === 'rest') {
+          const beats = getElementMetricBeats(item.element);
+          sBeats += beats;
+          let durSec = (4 / item.element.duration) * sQSec;
+          if (item.element.dots === 1) durSec *= 1.5;
+          else if (item.element.dots === 2) durSec *= 1.75;
+          if (item.element.tuplet && item.element.tuplet.actual > 0 && item.element.tuplet.normal > 0) {
+            durSec *= item.element.tuplet.normal / item.element.tuplet.actual;
+          }
+          if (item.element.fermata) {
+            durSec *= 2.0;
+          }
+          sDurSec += durSec;
+        }
+      }
+
+      if (sBeats > maxStaffBeats) maxStaffBeats = sBeats;
+      if (sDurSec > maxStaffDurationSec) maxStaffDurationSec = sDurSec;
+    }
+
+    let finalMeasureDurationSec: number;
+    if (maxStaffDurationSec > 0) {
+      finalMeasureDurationSec = maxStaffDurationSec;
+    } else {
+      // Empty measure across all staves: duration is determined by activeTimeCapacity
+      let nominalDurationSec = 0;
+      let currentSegmentQSec = prevailingQuarterSec;
+      const mChanges = measureTempoChanges[m] || [];
+      const changeBreakpoints = [0, ...mChanges.map((c) => c.beatOffset).filter((b) => b > 0 && b < activeTimeCapacity), activeTimeCapacity];
+      const uniqueBreakpoints = Array.from(new Set(changeBreakpoints)).sort((a, b) => a - b);
+
+      for (let i = 0; i < uniqueBreakpoints.length - 1; i++) {
+        const bStart = uniqueBreakpoints[i];
+        const bEnd = uniqueBreakpoints[i + 1];
+        const matchingChange = mChanges.filter((c) => c.beatOffset <= bStart + 0.001);
+        if (matchingChange.length > 0) {
+          currentSegmentQSec = matchingChange[matchingChange.length - 1].quarterDurationSec;
+        }
+        nominalDurationSec += (bEnd - bStart) * currentSegmentQSec;
+      }
+      finalMeasureDurationSec = nominalDurationSec;
+    }
+    measureDurationsSec.push(finalMeasureDurationSec);
+
+    const mChanges = measureTempoChanges[m] || [];
+    if (mChanges.length > 0) {
+      prevailingQuarterSec = mChanges[mChanges.length - 1].quarterDurationSec;
+    }
+  }
+
   const sequence = computeScoreMeasureSequence(score);
 
-  // Precompute initial quarter duration for each step in sequence
+  // Precompute timeline start seconds and initial quarter seconds for each step in sequence
+  const sequenceStepMeasureStartSec: number[] = [];
   const sequenceStepInitialQuarterSec: number[] = [];
-  let currentQSec = initialQuarterDurationSec;
+  let runningTimelineSec = 0;
+  let runningStepQSec = initialQuarterDurationSec;
 
   sequence.forEach((measureIndex) => {
+    sequenceStepMeasureStartSec.push(runningTimelineSec);
+
     const changes = measureTempoChanges[measureIndex] || [];
     const startChange = changes.find((c) => c.beatOffset <= 0.001);
     if (startChange) {
-      currentQSec = startChange.quarterDurationSec;
+      runningStepQSec = startChange.quarterDurationSec;
     }
-    sequenceStepInitialQuarterSec.push(currentQSec);
+    sequenceStepInitialQuarterSec.push(runningStepQSec);
 
     for (const c of changes) {
       if (c.beatOffset > 0.001) {
-        currentQSec = c.quarterDurationSec;
+        runningStepQSec = c.quarterDurationSec;
       }
     }
+
+    const durSec = measureDurationsSec[measureIndex] ?? (4 * runningStepQSec);
+    runningTimelineSec += durSec;
   });
 
   score.staves.forEach((staff, staffIndex) => {
     if (staff.muted) return;
-    let currentTimeSec = 0;
     let currentClef = staff.initialClef;
     let currentKeyAccidentalsCount = 0;
     let activeSlurTargetId: string | null = null;
+    let activeOttavaTargetId: string | null = null;
+    let activeOttavaShift = 0;
     const hasDynamicsOrHairpin = staff.elements.some(
-      (e) => e.type === 'dynamic' || (e.type === 'note' && (e as NoteElement).hairpin)
+      (e) =>
+        e.type === 'dynamic' ||
+        (e.type === 'note' && (e as NoteElement).hairpin) ||
+        (e.type === 'text' && parseDynamicGainFromText((e as TextElement).text) !== null)
     );
     let currentDynamicGain = hasDynamicsOrHairpin ? 0.72 : 1.0;
+    let currentStaffInstrument: InstrumentType = staff.instrument || 'piano';
     const measures = staffMeasures[staffIndex] || [];
 
     interface StaffNoteItem {
@@ -407,11 +654,17 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
       dynamicGain: number;
       measureIndex: number;
       prevMidiPitches?: number[];
+      instrument: InstrumentType;
+      isTenuto?: boolean;
+      isMordent?: boolean;
+      isTurn?: boolean;
     }
     const staffNotes: StaffNoteItem[] = [];
     let lastStaffNoteMidiPitches: number[] | null = null;
 
     sequence.forEach((measureIndex, seqIdx) => {
+      const measureStartSec = sequenceStepMeasureStartSec[seqIdx];
+      let currentTimeSec = measureStartSec;
       const measure = measures[measureIndex];
       if (!measure) return;
 
@@ -442,14 +695,41 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
           currentMeasureQuarterSec = computeQuarterDurationSec(element);
         } else if (element.type === 'dynamic') {
           currentDynamicGain = DYNAMIC_GAINS[element.mark] ?? 0.72;
-        } else if (element.type === 'text' && element.category === 'chord') {
-          measureChords.push({
-            elementIndex,
-            chordElem: element,
-            startTimeSec: currentTimeSec,
-            dynamicGain: currentDynamicGain,
-            measureIndex,
-          });
+        } else if (element.type === 'text') {
+          if (element.category === 'chord') {
+            measureChords.push({
+              elementIndex,
+              chordElem: element,
+              startTimeSec: currentTimeSec,
+              dynamicGain: currentDynamicGain,
+              measureIndex,
+            });
+          } else {
+            const dynGain = parseDynamicGainFromText(element.text);
+            if (dynGain !== null) {
+              currentDynamicGain = dynGain;
+            } else if (/\b(cresc\.?|crescendo)\b/i.test(element.text)) {
+              currentDynamicGain = Math.min(1.0, currentDynamicGain + 0.20);
+            } else if (/\b(dim\.?|diminuendo|decresc\.?|decrescendo)\b/i.test(element.text)) {
+              currentDynamicGain = Math.max(0.20, currentDynamicGain - 0.20);
+            }
+
+            const tempoChange = parseTempoChangeFromText(element.text, currentMeasureQuarterSec, initialQuarterDurationSec);
+            if (tempoChange !== null) {
+              currentMeasureQuarterSec = tempoChange;
+            }
+
+            const technique = parseTechniqueFromText(element.text);
+            if (technique === 'pizz') {
+              if (isBowedStringInstrument(staff.instrument)) {
+                currentStaffInstrument = 'harp';
+              }
+            } else if (technique === 'arco') {
+              if (isBowedStringInstrument(staff.instrument)) {
+                currentStaffInstrument = staff.instrument || 'violin';
+              }
+            }
+          }
         } else if (element.type === 'note') {
           const beatFraction = 4 / element.duration;
           let durationSec = beatFraction * currentMeasureQuarterSec;
@@ -468,6 +748,16 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
             durationSec *= 0.70;
           } else if (element.fermata) {
             durationSec *= 2.0;
+          } else if (element.tenuto) {
+            durationSec = nominalDurationSec;
+          }
+
+          let currentNoteOttavaShift = activeOttavaShift;
+          if (element.ottava && element.ottava.targetNoteId) {
+            const shift = getOttavaSemitoneShift(element.ottava.type);
+            activeOttavaShift = shift;
+            currentNoteOttavaShift = shift;
+            activeOttavaTargetId = element.ottava.targetNoteId;
           }
 
           const midiPitches = element.pitches.map((p) =>
@@ -476,8 +766,13 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
               currentClef,
               p.accidental,
               currentKeyAccidentalsCount
-            )
+            ) + currentNoteOttavaShift
           );
+
+          if (activeOttavaTargetId && element.id === activeOttavaTargetId) {
+            activeOttavaTargetId = null;
+            activeOttavaShift = 0;
+          }
 
           const isSlurContinuation = activeSlurTargetId !== null;
           const prevMidiPitches = isSlurContinuation && lastStaffNoteMidiPitches ? [...lastStaffNoteMidiPitches] : undefined;
@@ -507,6 +802,10 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
             dynamicGain: currentDynamicGain,
             measureIndex,
             prevMidiPitches,
+            instrument: currentStaffInstrument,
+            isTenuto: element.tenuto,
+            isMordent: element.ornament === 'mordent',
+            isTurn: element.ornament === 'turn',
           });
 
           if (element.fermata) {
@@ -533,7 +832,10 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
         }
       });
 
-      const measureEndTimeSec = currentTimeSec;
+      const measureEndTimeSec = Math.max(
+        currentTimeSec,
+        measureStartSec + (measureDurationsSec[measureIndex] ?? 0)
+      );
       for (let cIdx = 0; cIdx < measureChords.length; cIdx++) {
         const chordItem = measureChords[cIdx];
         let chordDurationSec: number;
@@ -631,19 +933,48 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
         vol = Math.min(1.0, vol * 1.25);
       } else if (sn.noteElem.marcato) {
         vol = Math.min(1.0, vol * 1.30);
+      } else if (sn.noteElem.tenuto) {
+        vol = Math.min(1.10, vol * 1.08);
       }
+
+      let glissandoTargetMidi: number | undefined;
+      let glissandoStyle: GlissandoStyle | undefined;
+      if (sn.noteElem.glissando && sn.noteElem.glissando.targetNoteId) {
+        const targetNote = staffNotes.find((n) => n.noteElem.id === sn.noteElem.glissando!.targetNoteId);
+        if (targetNote && targetNote.midiPitches.length > 0) {
+          glissandoTargetMidi = targetNote.midiPitches[0];
+        } else {
+          const targetElem = staff.elements.find(
+            (e) => e.type === 'note' && e.id === sn.noteElem.glissando!.targetNoteId
+          ) as NoteElement | undefined;
+          if (targetElem && targetElem.pitches.length > 0) {
+            glissandoTargetMidi = diatonicOffsetToMidi(
+              targetElem.pitches[0].diatonicOffset,
+              currentClef,
+              targetElem.pitches[0].accidental,
+              currentKeyAccidentalsCount
+            );
+          }
+        }
+        glissandoStyle = sn.noteElem.glissando.style || 'wavy';
+      }
+
       events.push({
         staffIndex,
         elementIndex: sn.elementIndex,
         midiPitches: sn.midiPitches,
         startTimeSec: sn.startTimeSec,
         durationSec: sn.durationSec,
-        instrument: staff.instrument || 'piano',
+        instrument: sn.instrument,
         volume: vol,
         isSlurred: sn.isSlurred,
         isSlurContinuation: sn.isSlurContinuation,
         isTiedContinuation: sn.isTiedContinuation,
         ...(sn.noteElem.ornament === 'trill' ? { isTrill: true } : {}),
+        ...(sn.isMordent ? { isMordent: true } : {}),
+        ...(sn.isTurn ? { isTurn: true } : {}),
+        ...(sn.isTenuto ? { isTenuto: true } : {}),
+        ...(glissandoTargetMidi !== undefined ? { glissandoTargetMidi, glissandoStyle } : {}),
         measureIndex: sn.measureIndex,
         prevMidiPitches: sn.prevMidiPitches,
       });
@@ -657,7 +988,12 @@ export function generatePlaybackEvents(score: Score): PlaybackEvent[] {
     // Chord events sort first so that melodic note ticks take visual precedence
     if (a.isChordSymbol && !b.isChordSymbol) return -1;
     if (!a.isChordSymbol && b.isChordSymbol) return 1;
-    return 0;
+    // Primary staves sort after substaves so primary staff tick runs last and takes cursor precedence
+    const staffA = score.staves[a.staffIndex];
+    const staffB = score.staves[b.staffIndex];
+    if (staffA?.substaffOf && !staffB?.substaffOf) return -1;
+    if (!staffA?.substaffOf && staffB?.substaffOf) return 1;
+    return a.staffIndex - b.staffIndex;
   });
 }
 
@@ -730,17 +1066,42 @@ export class ScorePlaybackScheduler {
       const timeout = setTimeout(() => {
         if (!this.isRunning) return;
         if (!evt.isTiedContinuation) {
-          evt.midiPitches.forEach(pitch =>
-            playTone(
-              pitch,
-              evt.durationSec,
-              evt.instrument,
-              evt.volume,
-              evt.isSlurred ?? false,
-              evt.isSlurContinuation ?? false,
-              Boolean(evt.isTrill)
-            )
-          );
+          evt.midiPitches.forEach(pitch => {
+            if (
+              evt.glissandoTargetMidi !== undefined ||
+              evt.glissandoStyle !== undefined ||
+              evt.isMordent !== undefined ||
+              evt.isTurn !== undefined ||
+              evt.isTenuto !== undefined
+            ) {
+              const prevMidi = evt.prevMidiPitches && evt.prevMidiPitches.length > 0 ? evt.prevMidiPitches[0] : undefined;
+              playTone(
+                pitch,
+                evt.durationSec,
+                evt.instrument,
+                evt.volume,
+                evt.isSlurred ?? false,
+                evt.isSlurContinuation ?? false,
+                Boolean(evt.isTrill),
+                prevMidi,
+                evt.glissandoTargetMidi,
+                evt.glissandoStyle,
+                evt.isMordent,
+                evt.isTurn,
+                evt.isTenuto
+              );
+            } else {
+              playTone(
+                pitch,
+                evt.durationSec,
+                evt.instrument,
+                evt.volume,
+                evt.isSlurred ?? false,
+                evt.isSlurContinuation ?? false,
+                Boolean(evt.isTrill)
+              );
+            }
+          });
         }
         onTick?.(evt.staffIndex, evt.elementIndex);
       }, delayMs);
@@ -762,5 +1123,6 @@ export class ScorePlaybackScheduler {
     this.isRunning = false;
     this.activeTimeouts.forEach(t => clearTimeout(t));
     this.activeTimeouts = [];
+    stopAllGlissando();
   }
 }
